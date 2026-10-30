@@ -1,6 +1,6 @@
 {
   "name": "opencode-github-bot",
-  "version": "0.2.4",
+  "version": "0.2.7",
   "description": "OpenCode v2 GitHub bot: composite action + server plugin for PR review and issue fix",
   "type": "module",
   "main": ".opencode/plugins/github-bot/index.ts",
@@ -10,15 +10,8 @@
     "action.yml",
     "README.md"
   ],
-  "scripts": {
-    "typecheck": "tsc --noEmit"
-  },
   "dependencies": {
     "@opencode/plugin": "latest"
-  },
-  "devDependencies": {
-    "@types/bun": "latest",
-    "typescript": "^5.9.3"
   },
   "keywords": [
     "opencode",
