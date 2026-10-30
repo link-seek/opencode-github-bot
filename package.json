@@ -14,13 +14,19 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@opencode-ai/plugin": "latest"
+    "@opencode/plugin": "latest"
   },
   "devDependencies": {
-    "typescript": "^5.7.0",
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "typescript": "^5.9.3"
   },
-  "keywords": ["opencode", "opencode-plugin", "github", "pr-review", "issue-fix"],
+  "keywords": [
+    "opencode",
+    "opencode-plugin",
+    "github",
+    "pr-review",
+    "issue-fix"
+  ],
   "license": "MIT",
   "repository": {
     "type": "git",
