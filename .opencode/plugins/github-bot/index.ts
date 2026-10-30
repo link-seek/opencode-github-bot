@@ -1,5 +1,5 @@
 import { Plugin } from "@opencode/plugin"
-import { fenceUntrusted, randomNonce, validateIssueNumber, validateBranchName } from "./lib"
+import { fenceUntrusted, randomNonce, validateIssueNumber, validateBranchName, runShell, ghApi, finishFixCore } from "./lib"
 
 /**
  * OpenCode v2 GitHub Bot — self-contained server plugin.
@@ -10,48 +10,7 @@ import { fenceUntrusted, randomNonce, validateIssueNumber, validateBranchName } 
  */
 
 
-async function runShell(cmd: string, cwd?: string): Promise<{ stdout: string; stderr: string; code: number }> {
-  // Use Bun.$ if available (opencode runs on Bun), fallback to child_process
-  try {
-    const proc = Bun.spawn(["bash", "-c", cmd], {
-      cwd: cwd || process.cwd(),
-      stdout: "pipe",
-      stderr: "pipe",
-    })
-    const stdout = await new Response(proc.stdout).text()
-    const stderr = await new Response(proc.stderr).text()
-    const code = await proc.exited
-    return { stdout: stdout.trim(), stderr: stderr.trim(), code }
-  } catch {
-    // Fallback to child_process
-    const { execSync } = await import("node:child_process")
-    try {
-      const stdout = execSync(cmd, { cwd: cwd || process.cwd(), encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] })
-      return { stdout: stdout.trim(), stderr: "", code: 0 }
-    } catch (e: any) {
-      return { stdout: "", stderr: e.stderr?.toString() ?? e.message, code: e.status ?? 1 }
-    }
-  }
-}
 
-async function ghApi(method: string, path: string, body?: Record<string, unknown>): Promise<any> {
-  const token = process.env.GITHUB_TOKEN
-  const res = await fetch(`https://api.github.com${path}`, {
-    method,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-      Accept: "application/vnd.github+json",
-      "X-GitHub-Api-Version": "2022-11-28",
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  })
-  if (!res.ok) {
-    const text = await res.text()
-    throw new Error(`GitHub API ${method} ${path}: ${res.status} ${text}`)
-  }
-  return res.json()
-}
 
 export default Plugin.define({
   id: "github-bot",
@@ -189,109 +148,13 @@ export default Plugin.define({
         },
         execute: async (input, context) => {
           const { issueNumber, summary } = input as { issueNumber: number; summary?: string }
-          const results: string[] = []
-
-          // Safety: validate issue number
-          const issueCheck = validateIssueNumber(issueNumber)
-          if (!issueCheck.valid) {
-            return { content: issueCheck.error! }
-          }
-
-          // Safety: never operate on protected branches
-          const currentBranch = (await runShell("git branch --show-current")).stdout
-          if (currentBranch === "main" || currentBranch === "master") {
-            return { content: "Error: cannot commit on protected branch (main/master). Checkout a feature branch first." }
-          }
-
-          // 1. Check for changes
-          const diff = await runShell("git diff --stat && git diff --cached --stat")
-          const status = await runShell("git status --porcelain")
-          if (!status.stdout) {
-            return { content: "No changes detected. Nothing to commit." }
-          }
-          results.push(`Changes detected:\n${diff.stdout || status.stdout}`)
-
-          // 1.5. Setup git identity and auth
-          const token = process.env.GITHUB_TOKEN
-          const repo = process.env.GITHUB_REPOSITORY
-          await runShell('git config --global user.name "jennifer95929-svgs"')
-          await runShell('git config --global user.email "272089793+jennifer95929-svgs@users.noreply.github.com"')
-          if (token && repo) {
-            await runShell(`git remote set-url origin https://x-access-token:${token}@github.com/${repo}.git`)
-          }
-
-          // 2. Commit
-          const commitMsg = `fix: resolve issue #${issueNumber}`
-          const commit = await runShell(`git add -A && git commit -m "${commitMsg}"`)
-          if (commit.code !== 0) {
-            return { content: `Commit failed: ${commit.stderr}` }
-          }
-          results.push("Committed.")
-
-          // 3. Check for existing open PRs
-          let existingPR: { number: number; head: string } | null = null
-          try {
-            const prs = await ghApi("GET", `/repos/${repo}/pulls?state=open`)
-            for (const pr of prs) {
-              if (pr.body && pr.body.includes(`Closes #${issueNumber}`)) {
-                existingPR = { number: pr.number, head: pr.head.ref }
-                break
-              }
-            }
-          } catch { /* non-fatal */ }
-
-          const branch = existingPR ? existingPR.head : `fix/issue-${issueNumber}`
-
-          // Safety: validate branch name
-          const branchCheck = validateBranchName(branch)
-          if (!branchCheck.valid) {
-            return { content: branchCheck.error! }
-          }
-
-          // 4. Push
-          if (existingPR) {
-            await runShell(`git fetch origin ${branch}`)
-            await runShell(`git checkout ${branch}`)
-            await runShell(`git cherry-pick HEAD 2>/dev/null || true`) // noop if already on branch
-          } else {
-            await runShell(`git checkout -b ${branch}`)
-          }
-          const push = await runShell(`git push --force-with-lease origin ${branch}`)
-          if (push.code !== 0) {
-            // Fallback to force push if lease fails (new branch)
-            const push2 = await runShell(`git push -u origin ${branch}`)
-            if (push2.code !== 0) {
-              return { content: `Push failed: ${push.stderr}\n${push2.stderr}` }
-            }
-          }
-          results.push(`Pushed to ${branch}.`)
-
-          // 5. Create or update PR
-          if (existingPR) {
-            try {
-              await ghApi("POST", `/repos/${repo}/issues/${existingPR.number}/comments`, {
-                body: `Updated with new fix attempt.\n\n${summary ?? ""}`,
-              })
-              results.push(`Updated existing PR #${existingPR.number}`)
-            } catch (e: any) {
-              results.push(`PR comment failed: ${e.message}`)
-            }
-          } else {
-            try {
-              const prData = await ghApi("POST", `/repos/${repo}/pulls`, {
-                title: `fix: resolve issue #${issueNumber}`,
-                body: `Closes #${issueNumber}\n\n${summary ?? ""}`,
-                head: branch,
-                base: "main",
-                draft: true,
-              })
-              results.push(`Created PR #${prData.number}: ${prData.html_url}`)
-            } catch (e: any) {
-              results.push(`PR creation failed: ${e.message}`)
-            }
-          }
-
-          return { content: results.join("\n") }
+          const repo = process.env.GITHUB_REPOSITORY ?? ""
+          const result = await finishFixCore(issueNumber, summary, {
+            runShell,
+            ghApi: (method, path, body) => ghApi(method, path, body, undefined, process.env.GITHUB_TOKEN),
+            repo,
+          })
+          return { content: result }
         },
       })
     })
