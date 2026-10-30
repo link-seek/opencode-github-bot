@@ -1,6 +1,6 @@
 {
   "name": "opencode-github-bot",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "description": "OpenCode v2 GitHub bot: composite action + server plugin for PR review and issue fix",
   "type": "module",
   "main": ".opencode/plugins/github-bot/index.ts",
