@@ -187,6 +187,7 @@ runs:
         REVIEW_PROMPT: ${{ inputs.review-prompt }}
         USE_SUB_AGENTS: ${{ inputs.use-sub-agents }}
         LLM_API_KEY: ${{ inputs.llm-api-key }}
+        OPENCODE_API_KEY: ${{ inputs.llm-api-key }}
         LLM_BASE_URL: ${{ inputs.llm-base-url }}
         TIMEOUT_MINUTES: ${{ inputs.timeout-minutes }}
         OPENCODE_CONFIG_CONTENT: '{"permission":"allow"}'
