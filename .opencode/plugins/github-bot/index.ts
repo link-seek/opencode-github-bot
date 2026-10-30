@@ -211,6 +211,15 @@ export default Plugin.define({
           }
           results.push(`Changes detected:\n${diff.stdout || status.stdout}`)
 
+          // 1.5. Setup git identity and auth
+          const token = process.env.GITHUB_TOKEN
+          const repo = process.env.GITHUB_REPOSITORY
+          await runShell('git config --global user.name "jennifer95929-svgs"')
+          await runShell('git config --global user.email "272089793+jennifer95929-svgs@users.noreply.github.com"')
+          if (token && repo) {
+            await runShell(`git remote set-url origin https://x-access-token:${token}@github.com/${repo}.git`)
+          }
+
           // 2. Commit
           const commitMsg = `fix: resolve issue #${issueNumber}`
           const commit = await runShell(`git add -A && git commit -m "${commitMsg}"`)
