@@ -101,6 +101,28 @@ runs:
         mkdir -p .opencode/agents
         cp -r "$GITHUB_ACTION_PATH/.opencode/agents/"* .opencode/agents/ 2>/dev/null || true
 
+    - name: Gather PR context
+      if: inputs.mode == 'review' && inputs.pr-number != ''
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        PR_NUMBER: ${{ inputs.pr-number }}
+        REPOSITORY: ${{ github.repository }}
+      run: |
+        mkdir -p .opencode
+        {
+          echo "# PR Context"
+          echo ""
+          gh api "repos/${REPOSITORY}/pulls/${PR_NUMBER}" --jq '"## Title: " + .title + "\n\n" + (.body // "") + "\n\nBase: " + .base.ref + "  Head: " + .head.ref + "  SHA: " + .head.sha'
+          echo ""
+          echo "## Files Changed"
+          gh api "repos/${REPOSITORY}/pulls/${PR_NUMBER}/files" --jq '.[] | "### " + .status + ": " + .filename' 2>/dev/null || true
+          echo ""
+          echo "## Diff"
+          gh pr diff "${PR_NUMBER}" 2>/dev/null | head -c 80000 || true
+        } > .opencode/pr-context.md
+        echo "Context written: $(wc -c < .opencode/pr-context.md) bytes"
+
     - name: Run OpenCode v2
       shell: bash
       env:
@@ -124,4 +146,4 @@ runs:
         export PATH="$HOME/.opencode/bin:$PATH"
         git config --global user.name "opencode-bot"
         git config --global user.email "opencode-bot@users.noreply.github.com"
-        opencode run --agent github-bot --model "${MODEL}" "Mode: ${MODE}. Repository: ${REPOSITORY}. PR number: ${PR_NUMBER}. Issue number: ${ISSUE_NUMBER}."
+        opencode run --agent github-bot --model "${MODEL}" "Mode: ${MODE}. Repository: ${REPOSITORY}. PR number: ${PR_NUMBER}. Issue number: ${ISSUE_NUMBER}. Read .opencode/pr-context.md for the full PR context, then use the pr-review skill to review and post findings via gh-pr-review."
