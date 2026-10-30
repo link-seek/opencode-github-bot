@@ -126,6 +126,59 @@ export async function finishFixCore(
   }
   results.push(`Changes detected:\n${diff.stdout || status.stdout}`)
 
+  // 1.6. Run verification (tests) if possible
+  const verifyCmd = process.env.VERIFY_COMMAND || null
+  let testStatus = "not_run"
+  let testOutput = ""
+  if (verifyCmd) {
+    const verifyResult = await runVerification(verifyCmd, deps.runShell)
+    testStatus = verifyResult.status
+    testOutput = verifyResult.output
+    if (verifyResult.status === "failed") {
+      return `Tests failed:\n${verifyResult.output}\n\nFix the tests and call finish-fix again.`
+    }
+    if (verifyResult.status === "passed") {
+      results.push(`Tests passed: ${verifyCmd}`)
+    } else {
+      results.push(`Tests could not run: ${verifyResult.output}`)
+    }
+  } else {
+    const hasPkg = (await deps.runShell("test -f package.json && echo yes || echo no")).stdout === "yes"
+    const hasMake = (await deps.runShell("test -f Makefile && echo yes || echo no")).stdout === "yes"
+    const hasPyproject = (await deps.runShell("test -f pyproject.toml && echo yes || echo no")).stdout === "yes"
+    const hasCargo = (await deps.runShell("test -f Cargo.toml && echo yes || echo no")).stdout === "yes"
+    const hasGo = (await deps.runShell("test -f go.mod && echo yes || echo no")).stdout === "yes"
+    let pkgScripts: { test?: string; verify?: string } = {}
+    if (hasPkg) {
+      try {
+        const pkgContent = await deps.runShell("cat package.json")
+        const pkg = JSON.parse(pkgContent.stdout)
+        pkgScripts = pkg.scripts || {}
+      } catch { /* ignore */ }
+    }
+    const cmd = detectTestCommand(
+      { hasPackageJson: hasPkg, hasMakefile: hasMake, hasPyproject: hasPyproject, hasCargoToml: hasCargo, hasGoMod: hasGo },
+      pkgScripts,
+      undefined,
+    )
+    if (cmd) {
+      const verifyResult = await runVerification(cmd, deps.runShell)
+      testStatus = verifyResult.status
+      testOutput = verifyResult.output
+      if (verifyResult.status === "failed") {
+        return `Tests failed:\n${verifyResult.output}\n\nFix the tests and call finish-fix again.`
+      }
+      if (verifyResult.status === "passed") {
+        results.push(`Tests passed: ${cmd}`)
+      } else {
+        results.push(`Tests could not run: ${verifyResult.output}`)
+      }
+    } else {
+      testStatus = "not_run"
+      results.push("No test command detected. CI will validate.")
+    }
+  }
+
   // 2. Commit
   const commitMsg = `fix: resolve issue #${issueNumber}`
   const commit = await deps.runShell(`git add -A && git commit -m "${commitMsg}"`)
@@ -173,8 +226,9 @@ export async function finishFixCore(
   // 5. Create or update PR
   if (existingPR) {
     try {
+      const testStatusLine = testStatus === "passed" ? `\n\n## Test Status\n✅ Passed` : testStatus === "not_run" ? `\n\n## Test Status\n⚠️ Not run (no test environment)` : `\n\n## Test Status\n❌ ${testStatus}`
       await deps.ghApi("POST", `/repos/${deps.repo}/issues/${existingPR.number}/comments`, {
-        body: `Updated with new fix attempt.\n\n${summary ?? ""}`,
+        body: `Updated with new fix attempt.\n\n${summary ?? ""}${testStatusLine}`,
       })
       results.push(`Updated existing PR #${existingPR.number}`)
     } catch (e: any) {
@@ -184,7 +238,7 @@ export async function finishFixCore(
     try {
       const prData = await deps.ghApi("POST", `/repos/${deps.repo}/pulls`, {
         title: `fix: resolve issue #${issueNumber}`,
-        body: `Closes #${issueNumber}\n\n${summary ?? ""}`,
+        body: `Closes #${issueNumber}\n\n${summary ?? ""}\n\n## Test Status\n${testStatus === "passed" ? "✅ Passed" : testStatus === "not_run" ? "⚠️ Not run (no test environment)" : `❌ ${testStatus}`}${testOutput ? ` — ${testOutput.slice(0, 300)}` : ""}`,
         head: branch,
         base: "main",
         draft: true,
@@ -196,4 +250,70 @@ export async function finishFixCore(
   }
 
   return results.join("\n")
+}
+
+// --- Test detection and verification (extracted for testing) ---
+
+export interface VerifyResult {
+  command: string | null
+  status: "passed" | "failed" | "not_run" | "error"
+  output: string
+}
+
+export function detectTestCommand(
+  files: { hasPackageJson: boolean; hasMakefile: boolean; hasPyproject: boolean; hasCargoToml: boolean; hasGoMod: boolean },
+  packageJsonScripts?: { test?: string; verify?: string },
+  envVerifyCommand?: string,
+): string | null {
+  // 1. Explicit env var (highest priority)
+  if (envVerifyCommand && envVerifyCommand.trim()) {
+    return envVerifyCommand.trim()
+  }
+  // 2. package.json scripts
+  if (files.hasPackageJson && packageJsonScripts) {
+    if (packageJsonScripts.verify) return packageJsonScripts.verify
+    if (packageJsonScripts.test && packageJsonScripts.test !== 'echo "Error: no test specified" && exit 1') {
+      return packageJsonScripts.test
+    }
+  }
+  // 3. Makefile
+  if (files.hasMakefile) return "make test"
+  // 4. Python
+  if (files.hasPyproject) return "pytest"
+  // 5. Rust
+  if (files.hasCargoToml) return "cargo test"
+  // 6. Go
+  if (files.hasGoMod) return "go test ./..."
+  return null
+}
+
+export async function runVerification(
+  cmd: string | null,
+  runShellFn: (cmd: string) => Promise<{ stdout: string; stderr: string; code: number }>,
+): Promise<VerifyResult> {
+  if (!cmd) {
+    return { command: null, status: "not_run", output: "No test command detected" }
+  }
+  try {
+    const result = await runShellFn(cmd)
+    if (result.code === 0) {
+      return { command: cmd, status: "passed", output: result.stdout || "Tests passed" }
+    }
+    return { command: cmd, status: "failed", output: result.stderr || result.stdout || "Tests failed" }
+  } catch (e: any) {
+    return { command: cmd, status: "error", output: e.message || "Failed to run tests" }
+  }
+}
+
+export function formatTestStatus(result: VerifyResult): string {
+  switch (result.status) {
+    case "passed":
+      return `✅ Tests passed — \`${result.command}\`\n${result.output.slice(0, 500)}`
+    case "failed":
+      return `❌ Tests failed — \`${result.command}\`\n${result.output.slice(0, 500)}`
+    case "not_run":
+      return `⚠️ Tests not run — ${result.output}. CI will validate.`
+    case "error":
+      return `⚠️ Tests could not run — ${result.output}. CI will validate.`
+  }
 }
