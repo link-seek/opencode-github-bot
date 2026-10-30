@@ -92,6 +92,15 @@ runs:
       shell: bash
       run: echo "$HOME/.opencode/bin" >> $GITHUB_PATH
 
+    - name: Copy bot plugin and skills into target repo
+      shell: bash
+      run: |
+        mkdir -p .opencode/plugins .opencode/skills
+        cp -r "$GITHUB_ACTION_PATH/.opencode/plugins/github-bot" .opencode/plugins/ 2>/dev/null || true
+        cp -r "$GITHUB_ACTION_PATH/.opencode/skills/"* .opencode/skills/ 2>/dev/null || true
+        mkdir -p .opencode/agents
+        cp -r "$GITHUB_ACTION_PATH/.opencode/agents/"* .opencode/agents/ 2>/dev/null || true
+
     - name: Run OpenCode v2
       shell: bash
       env:
@@ -115,4 +124,4 @@ runs:
         export PATH="$HOME/.opencode/bin:$PATH"
         git config --global user.name "opencode-bot"
         git config --global user.email "opencode-bot@users.noreply.github.com"
-        opencode run --agent github-bot "Run ${MODE} for ${REPOSITORY}"
+        opencode run --agent github-bot "Mode: ${MODE}. Repository: ${REPOSITORY}. PR number: ${PR_NUMBER}. Issue number: ${ISSUE_NUMBER}."
