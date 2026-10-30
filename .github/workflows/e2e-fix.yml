@@ -1,0 +1,43 @@
+name: e2e-fix
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create test issue
+        id: issue
+        run: |
+          ISSUE_NUM=$(gh issue create --title "e2e: fix test" --body "Add a comment line to README.md. Test issue for E2E fix validation." --json number --jq '.number')
+          echo "issue_number=$ISSUE_NUM" >> $GITHUB_OUTPUT
+          gh issue edit $ISSUE_NUM --add-assignee ${{ github.actor }}
+
+      - name: Wait for bot
+        run: sleep 120
+
+      - name: Verify PR created
+        run: |
+          PRS=$(gh pr list --head "fix/issue-${{ steps.issue.outputs.issue_number }}" --json number --jq 'length')
+          echo "PRs created: $PRS"
+          [ "$PRS" -gt 0 ] || { echo "FAIL: no PR created"; exit 1; }
+          echo "PASS: PR created"
+
+      - name: Cleanup
+        if: always()
+        run: |
+          PR_NUM=$(gh pr list --head "fix/issue-${{ steps.issue.outputs.issue_number }}" --json number --jq '.[0].number' 2>/dev/null || echo "")
+          [ -n "$PR_NUM" ] && gh pr close $PR_NUM --delete-branch 2>/dev/null || true
+          gh issue close ${{ steps.issue.outputs.issue_number }} 2>/dev/null || true

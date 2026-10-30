@@ -1,0 +1,56 @@
+name: e2e-review
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create test PR
+        id: pr
+        run: |
+          git config user.name "e2e-bot"
+          git config user.email "e2e-bot@users.noreply.github.com"
+          git checkout -b e2e-review-test
+          echo "# E2E test" >> README.md
+          git add README.md && git commit -m "test: e2e review trigger"
+          git push origin e2e-review-test
+          PR_NUM=$(gh pr create --title "e2e: review test" --body "Test PR for E2E review validation." --base main --json number --jq '.number')
+          echo "pr_number=$PR_NUM" >> $GITHUB_OUTPUT
+
+      - name: Run OpenCode review
+        uses: ./
+        with:
+          model: opencode/beam-free
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          mode: review
+          pr-number: ${{ steps.pr.outputs.pr_number }}
+          require-evidence: "false"
+          require-pinned-actions: "false"
+          collect-feedback: "true"
+          review-prompt: "Review this PR. If clean, reply briefly. Flag any bugs."
+
+      - name: Verify review posted
+        run: |
+          sleep 5
+          COMMENTS=$(gh pr view ${{ steps.pr.outputs.pr_number }} --json comments --jq '.comments | length')
+          echo "Review comments: $COMMENTS"
+          [ "$COMMENTS" -gt 0 ] || { echo "FAIL: no review comment posted"; exit 1; }
+          echo "PASS: review posted"
+
+      - name: Cleanup
+        if: always()
+        run: |
+          gh pr close ${{ steps.pr.outputs.pr_number }} --delete-branch 2>/dev/null || true

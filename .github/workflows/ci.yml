@@ -14,3 +14,16 @@ jobs:
       - run: bun install
       - run: bun run typecheck
       - run: bun test
+
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - name: Install OpenCode v2
+        run: curl -fsSL https://opencode.ai/v2/install | bash
+      - name: Smoke test — agent loads and responds
+        run: |
+          export PATH="$HOME/.opencode/bin:$PATH"
+          opencode run --agent github-bot "Reply with exactly: SMOKE_OK" | tee /tmp/smoke.log
+          grep -q "SMOKE_OK" /tmp/smoke.log || { echo "Smoke test failed"; cat /tmp/smoke.log; exit 1; }
