@@ -203,6 +203,17 @@ export default Plugin.define({
           const { issueNumber, summary } = input as { issueNumber: number; summary?: string }
           const results: string[] = []
 
+          // Safety: validate issue number
+          if (!issueNumber || issueNumber <= 0 || !Number.isInteger(issueNumber)) {
+            return { content: "Error: invalid issue number" }
+          }
+
+          // Safety: never operate on protected branches
+          const currentBranch = (await runShell("git branch --show-current")).stdout
+          if (currentBranch === "main" || currentBranch === "master") {
+            return { content: "Error: cannot commit on protected branch (main/master). Checkout a feature branch first." }
+          }
+
           // 1. Check for changes
           const diff = await runShell("git diff --stat && git diff --cached --stat")
           const status = await runShell("git status --porcelain")
@@ -241,6 +252,11 @@ export default Plugin.define({
           } catch { /* non-fatal */ }
 
           const branch = existingPR ? existingPR.head : `fix/issue-${issueNumber}`
+
+          // Safety: validate branch name
+          if (!/^[a-zA-Z0-9._\/-]+$/.test(branch) || branch === "main" || branch === "master") {
+            return { content: `Error: invalid or protected branch name: ${branch}` }
+          }
 
           // 4. Push
           if (existingPR) {
