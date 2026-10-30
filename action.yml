@@ -1,0 +1,118 @@
+name: "OpenCode v2 GitHub Bot"
+description: "Run OpenCode v2 in GitHub Actions for PR review and issue fix"
+branding:
+  icon: "code"
+  color: "orange"
+
+inputs:
+  model:
+    description: "Model to use, in provider/model format"
+    required: true
+  agent-kind:
+    description: "Backend: opencode (default) or acp"
+    required: false
+    default: "opencode"
+  acp-command:
+    description: "ACP server command when agent-kind=acp"
+    required: false
+    default: ""
+  github-token:
+    description: "GitHub token for API access (required)"
+    required: true
+  mode:
+    description: "review | fix-issue"
+    required: false
+    default: "review"
+  issue-number:
+    description: "Issue number (fix-issue mode)"
+    required: false
+    default: ""
+  pr-number:
+    description: "PR number (review mode)"
+    required: false
+    default: ""
+  max-iterations:
+    description: "Max auto-fix iterations"
+    required: false
+    default: "10"
+  require-evidence:
+    description: "Require PR description evidence"
+    required: false
+    default: "false"
+  require-pinned-actions:
+    description: "Require third-party actions pinned to SHA"
+    required: false
+    default: "false"
+  collect-feedback:
+    description: "Append feedback footer to review body"
+    required: false
+    default: "true"
+  use-sub-agents:
+    description: "Enable sub-agent delegation for file-level review"
+    required: false
+    default: "false"
+  llm-api-key:
+    description: "LLM API key (required for opencode backend)"
+    required: false
+    default: ""
+  llm-base-url:
+    description: "LLM base URL (optional)"
+    required: false
+    default: ""
+  timeout-minutes:
+    description: "Max minutes for opencode run"
+    required: false
+    default: "60"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Preflight permission smoke test
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        PR_NUMBER: ${{ inputs.pr-number }}
+        REPOSITORY: ${{ github.repository }}
+      run: |
+        if [ -z "$PR_NUMBER" ]; then
+          echo "No PR number, skipping preflight"
+          exit 0
+        fi
+        if ! REVIEW_ID="$(gh api -X POST "repos/${REPOSITORY}/pulls/${PR_NUMBER}/reviews" -f body='Preflight smoke test' --jq '.id' 2>/dev/null)"; then
+          echo "::error::GITHUB_TOKEN lacks pull_requests:write"
+          exit 1
+        fi
+        gh api -X DELETE "repos/${REPOSITORY}/pulls/${PR_NUMBER}/reviews/${REVIEW_ID}" 2>/dev/null || true
+
+    - name: Install OpenCode v2
+      shell: bash
+      run: curl -fsSL https://opencode.ai/v2/install | bash
+
+    - name: Add OpenCode to PATH
+      shell: bash
+      run: echo "$HOME/.opencode/bin" >> $GITHUB_PATH
+
+    - name: Run OpenCode v2
+      shell: bash
+      env:
+        MODEL: ${{ inputs.model }}
+        AGENT_KIND: ${{ inputs.agent-kind }}
+        ACP_COMMAND: ${{ inputs.acp-command }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        MODE: ${{ inputs.mode }}
+        ISSUE_NUMBER: ${{ inputs.issue-number }}
+        PR_NUMBER: ${{ inputs.pr-number }}
+        MAX_ITERATIONS: ${{ inputs.max-iterations }}
+        REQUIRE_EVIDENCE: ${{ inputs.require-evidence }}
+        REQUIRE_PINNED_ACTIONS: ${{ inputs.require-pinned-actions }}
+        COLLECT_FEEDBACK: ${{ inputs.collect-feedback }}
+        USE_SUB_AGENTS: ${{ inputs.use-sub-agents }}
+        LLM_API_KEY: ${{ inputs.llm-api-key }}
+        LLM_BASE_URL: ${{ inputs.llm-base-url }}
+        TIMEOUT_MINUTES: ${{ inputs.timeout-minutes }}
+        OPENCODE_CONFIG_CONTENT: '{"permission":"allow"}'
+      run: |
+        export PATH="$HOME/.opencode/bin:$PATH"
+        git config --global user.name "opencode-bot"
+        git config --global user.email "opencode-bot@users.noreply.github.com"
+        opencode run --agent github-bot "Run ${MODE} for ${REPOSITORY}"

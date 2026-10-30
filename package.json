@@ -1,0 +1,16 @@
+{
+  "name": "opencode-github-bot",
+  "version": "0.1.0",
+  "description": "OpenCode v2 GitHub bot: composite action + server plugin for PR review and issue fix",
+  "type": "module",
+  "main": ".opencode/plugins/github-bot/index.ts",
+  "dependencies": {
+    "@opencode-ai/plugin": "latest"
+  },
+  "keywords": ["opencode", "opencode-plugin", "github", "pr-review", "issue-fix"],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/link-seek/opencode-github-bot.git"
+  }
+}
