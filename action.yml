@@ -123,6 +123,25 @@ runs:
         } > .opencode/pr-context.md
         echo "Context written: $(wc -c < .opencode/pr-context.md) bytes"
 
+    - name: Gather issue context
+      if: inputs.mode == 'fix-issue' && inputs.issue-number != ''
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        ISSUE_NUMBER: ${{ inputs.issue-number }}
+        REPOSITORY: ${{ github.repository }}
+      run: |
+        mkdir -p .opencode
+        {
+          echo "# Issue Context"
+          echo ""
+          gh api "repos/${REPOSITORY}/issues/${ISSUE_NUMBER}" --jq '"## Title: " + .title + "\n\n" + (.body // "") + "\n\nAuthor: " + .user.login + "\nLabels: " + ([.labels[].name] | join(", "))'
+          echo ""
+          echo "## Recent Comments"
+          gh api "repos/${REPOSITORY}/issues/${ISSUE_NUMBER}/comments" --jq '.[] | "### @" + .user.login + "\n" + .body' 2>/dev/null || true
+        } > .opencode/issue-context.md
+        echo "Context written: $(wc -c < .opencode/issue-context.md) bytes"
+
     - name: Run OpenCode v2
       shell: bash
       env:
@@ -146,4 +165,4 @@ runs:
         export PATH="$HOME/.opencode/bin:$PATH"
         git config --global user.name "opencode-bot"
         git config --global user.email "opencode-bot@users.noreply.github.com"
-        opencode run --agent github-bot --model "${MODEL}" "Mode: ${MODE}. Repository: ${REPOSITORY}. PR number: ${PR_NUMBER}. Issue number: ${ISSUE_NUMBER}. Read .opencode/pr-context.md for the full PR context, then use the pr-review skill to review and post findings via gh-pr-review."
+        opencode run --agent github-bot --model "${MODEL}" "Mode: ${MODE}. Repository: ${REPOSITORY}. PR number: ${PR_NUMBER}. Issue number: ${ISSUE_NUMBER}. If mode is review, read .opencode/pr-context.md and use the pr-review skill. If mode is fix-issue, read .opencode/issue-context.md and use the issue-fix skill to implement the fix and open a PR via gh-pr-create."
