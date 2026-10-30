@@ -1,5 +1,7 @@
 # opencode-github-bot
 
+![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
+
 OpenCode v2 GitHub bot: composite action + server plugin for PR review and issue fix.
 
 Built on OpenCode v2's plugin system (`@opencode/plugin`). Does not modify OpenCode core.
