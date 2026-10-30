@@ -1,4 +1,5 @@
 import { Plugin } from "@opencode/plugin"
+import { fenceUntrusted, randomNonce, validateIssueNumber, validateBranchName } from "./lib"
 
 /**
  * OpenCode v2 GitHub Bot — self-contained server plugin.
@@ -8,19 +9,6 @@ import { Plugin } from "@opencode/plugin"
  * Hook: nonce fence on prompt
  */
 
-function fenceUntrusted(content: string, nonce: string): string {
-  return (
-    `===== BEGIN UNTRUSTED PR CONTENT ${nonce} =====\n` +
-    `${content}\n` +
-    `===== END UNTRUSTED PR CONTENT ${nonce} =====`
-  )
-}
-
-function randomNonce(): string {
-  const bytes = new Uint8Array(16)
-  crypto.getRandomValues(bytes)
-  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("")
-}
 
 async function runShell(cmd: string, cwd?: string): Promise<{ stdout: string; stderr: string; code: number }> {
   // Use Bun.$ if available (opencode runs on Bun), fallback to child_process
@@ -204,8 +192,9 @@ export default Plugin.define({
           const results: string[] = []
 
           // Safety: validate issue number
-          if (!issueNumber || issueNumber <= 0 || !Number.isInteger(issueNumber)) {
-            return { content: "Error: invalid issue number" }
+          const issueCheck = validateIssueNumber(issueNumber)
+          if (!issueCheck.valid) {
+            return { content: issueCheck.error! }
           }
 
           // Safety: never operate on protected branches
@@ -254,8 +243,9 @@ export default Plugin.define({
           const branch = existingPR ? existingPR.head : `fix/issue-${issueNumber}`
 
           // Safety: validate branch name
-          if (!/^[a-zA-Z0-9._\/-]+$/.test(branch) || branch === "main" || branch === "master") {
-            return { content: `Error: invalid or protected branch name: ${branch}` }
+          const branchCheck = validateBranchName(branch)
+          if (!branchCheck.valid) {
+            return { content: branchCheck.error! }
           }
 
           // 4. Push
