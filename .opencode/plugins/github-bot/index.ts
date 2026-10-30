@@ -1,5 +1,5 @@
 import { Plugin } from "@opencode/plugin"
-import { fenceUntrusted, randomNonce, validateIssueNumber, validateBranchName, runShell, ghApi, finishFixCore } from "./lib"
+import { validateIssueNumber, validateBranchName, runShell, ghApi, finishFixCore } from "./lib"
 
 /**
  * OpenCode v2 GitHub Bot — self-contained server plugin.
@@ -159,13 +159,9 @@ export default Plugin.define({
       })
     })
 
-    // --- Prompt hook: fence untrusted content -------------------------------
-    await ctx.session.hook("prompt", (event) => {
-      const nonce = randomNonce()
-      if (event.prompt.text) {
-        event.prompt.text = fenceUntrusted(event.prompt.text, nonce)
-      }
-    })
+    // NOTE: Prompt text is trusted (comes from workflow, not PR/issue content).
+    // Untrusted PR/issue content is fenced in the context file (pr-context.md / issue-context.md).
+    // Do NOT fence the prompt here — it would make the model refuse to follow instructions.
 
     await ctx.storage.set("loaded", true)
     console.log(`github-bot plugin loaded in OpenCode ${ctx.app.version}`)
