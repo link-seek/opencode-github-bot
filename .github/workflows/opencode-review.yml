@@ -3,6 +3,12 @@ name: opencode-review
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+    inputs:
+      pr-number:
+        description: 'PR number'
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -11,7 +17,7 @@ permissions:
 
 jobs:
   review:
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event.pull_request.head.repo.full_name == github.repository || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -25,7 +31,7 @@ jobs:
           model: opencode/beam-free
           github-token: ${{ secrets.GITHUB_TOKEN }}
           mode: review
-          pr-number: ${{ github.event.pull_request.number }}
+          pr-number: ${{ github.event.inputs.pr-number || github.event.pull_request.number }}
           require-evidence: "false"
           require-pinned-actions: "false"
           collect-feedback: "true"
