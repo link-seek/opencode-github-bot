@@ -43,6 +43,10 @@ inputs:
     description: "Append feedback footer to review body"
     required: false
     default: "true"
+  review-prompt:
+    description: "Custom review prompt override (replaces default pr-review skill instruction)"
+    required: false
+    default: ""
   use-sub-agents:
     description: "Enable sub-agent delegation for file-level review"
     required: false
@@ -180,6 +184,7 @@ runs:
         REQUIRE_EVIDENCE: ${{ inputs.require-evidence }}
         REQUIRE_PINNED_ACTIONS: ${{ inputs.require-pinned-actions }}
         COLLECT_FEEDBACK: ${{ inputs.collect-feedback }}
+        REVIEW_PROMPT: ${{ inputs.review-prompt }}
         USE_SUB_AGENTS: ${{ inputs.use-sub-agents }}
         LLM_API_KEY: ${{ inputs.llm-api-key }}
         LLM_BASE_URL: ${{ inputs.llm-base-url }}
@@ -187,4 +192,8 @@ runs:
         OPENCODE_CONFIG_CONTENT: '{"permission":"allow"}'
       run: |
         export PATH="$HOME/.opencode/bin:$PATH"
-        opencode run --agent github-bot --model "${MODEL}" "Mode: ${MODE}. Repository: ${REPOSITORY}. PR number: ${PR_NUMBER}. Issue number: ${ISSUE_NUMBER}. If mode is review, read .opencode/pr-context.md and use the pr-review skill. If mode is fix-issue, read .opencode/issue-context.md and use the issue-fix skill."
+        if [ -n "${REVIEW_PROMPT}" ]; then
+          opencode run --agent github-bot --model "${MODEL}" "Mode: ${MODE}. Repository: ${REPOSITORY}. PR number: ${PR_NUMBER}. Issue number: ${ISSUE_NUMBER}. Read .opencode/pr-context.md for full context. Review prompt: ${REVIEW_PROMPT}"
+        else
+          opencode run --agent github-bot --model "${MODEL}" "Mode: ${MODE}. Repository: ${REPOSITORY}. PR number: ${PR_NUMBER}. Issue number: ${ISSUE_NUMBER}. If mode is review, read .opencode/pr-context.md and use the pr-review skill. If mode is fix-issue, read .opencode/issue-context.md and use the issue-fix skill."
+        fi
