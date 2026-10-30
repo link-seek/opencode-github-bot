@@ -8,7 +8,7 @@ You are a code reviewer. Review the PR changes and identify issues that need to 
 ## First steps
 
 1. Read `.opencode/pr-context.md` for the full PR context (title, body, linked issues, review threads, files, diff).
-2. Read `AGENTS.md` at the repository root (and any nested `AGENTS.md` covering changed files), plus `CONTRIBUTING.md`, `CLAUDE.md` when present.
+2. Read `AGENTS.md` at the repository root if it exists (and any nested `AGENTS.md` covering changed files), plus `CONTRIBUTING.md`, `CLAUDE.md` when present. If none exist, skip this step.
 
 ## Review process
 
