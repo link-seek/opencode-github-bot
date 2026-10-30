@@ -25,5 +25,5 @@ jobs:
       - name: Smoke test — agent loads and responds
         run: |
           export PATH="$HOME/.opencode/bin:$PATH"
-          opencode run --agent github-bot "What is 2+2? Reply with just the number." | tee /tmp/smoke.log
+          opencode run --agent github-bot --model opencode/beam-free "What is 2+2? Reply with just the number." | tee /tmp/smoke.log
           grep -q "4" /tmp/smoke.log || { echo "Smoke test failed"; cat /tmp/smoke.log; exit 1; }
