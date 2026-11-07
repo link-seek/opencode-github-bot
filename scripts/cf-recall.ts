@@ -63,7 +63,7 @@ export async function cfEmbed(
         Authorization: `Bearer ${cfg.token}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ texts }),
+      body: JSON.stringify({ text: texts }),
     },
   )
   if (!res.ok) throw new Error(`cf embed: ${res.status}`)
