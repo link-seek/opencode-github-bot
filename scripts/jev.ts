@@ -5,7 +5,7 @@
  */
 
 export const JEV_MODEL = "jev-1.13.0"
-export const JEV_MODEL_OPENCODE = "jev-1.13"
+export const JEV_MODEL_OPENCODE = "jev-1.13-free"
 export const JEV_OPENCODE_URL = "https://opencode.ai/inference/systemone/v1/systemone"
 export const JEV_DIRECT_URL = "https://api.typesafe.ai/v1/systemone"
 
