@@ -1,0 +1,18 @@
+name: jev-live
+on:
+  push:
+    branches: [recall-prototype]
+jobs:
+  live:
+    if: contains(github.event.head_commit.message, 'jev-live-demo')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: recall-prototype
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install
+      - env:
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          TS_API_KEY: ${{ secrets.TS_API_KEY }}
+        run: bun scripts/jev-live-demo.ts
