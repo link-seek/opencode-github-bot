@@ -202,3 +202,8 @@ async function applyLabels(repo: string, n: number, token: string, labels: strin
 async function postComment(repo: string, n: number, token: string, body: string) {
   await gh(`/repos/${repo}/issues/${n}/comments`, token, { method: "POST", body: JSON.stringify({ body }) })
 }
+
+if (import.meta.main) {
+  const res = await runIntake()
+  console.log(JSON.stringify({ decision: res.decision, labels: res.labels }))
+}
