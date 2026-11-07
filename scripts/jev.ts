@@ -5,6 +5,7 @@
  */
 
 export const JEV_MODEL = "jev-1.13.0"
+export const JEV_MODEL_OPENCODE = "jev-1.13"
 export const JEV_OPENCODE_URL = "https://opencode.ai/inference/systemone/v1/systemone"
 export const JEV_DIRECT_URL = "https://api.typesafe.ai/v1/systemone"
 
@@ -104,16 +105,20 @@ export async function jevIntake(
   fetchFn: typeof fetch = fetch,
 ): Promise<JevScores | null> {
   if (!ep) return null
+  const model = ep.url.includes("opencode.ai") ? JEV_MODEL_OPENCODE : JEV_MODEL
   const res = await fetchFn(ep.url, {
     method: "POST",
     headers: { Authorization: `Bearer ${ep.key}`, "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: JEV_MODEL,
+      model,
       state: buildJevState(state),
       questions: buildJevQuestions(state.role),
     }),
   })
-  if (!res.ok) throw new Error(`jev: ${res.status}`)
+  if (!res.ok) {
+    const t = await res.text().catch(() => "")
+    throw new Error(`jev: ${res.status} ${t.slice(0, 300)}`)
+  }
   const data = (await res.json()) as any
   const a = data?.answers ?? {}
   const typeAns = a?.type ?? {}
