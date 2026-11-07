@@ -100,3 +100,33 @@ export async function cfQuery(
     .map((m: any) => ({ number: Number(m?.metadata?.issue ?? m?.id), score: m?.score ?? 0 }))
     .filter((m: any) => Number.isFinite(m.number))
 }
+
+/**
+ * Mint an ephemeral child token (parent -> child, least privilege).
+ * Best-effort: parent without token-create permission returns null,
+ * caller falls back to parent with a warning (prototype), strict later.
+ */
+export async function cfMintChild(
+  cfg: CfConfig,
+  ttlSeconds = 600,
+  fetchFn: typeof fetch = fetch,
+): Promise<string | null> {
+  try {
+    const res = await fetchFn("https://api.cloudflare.com/client/v4/user/tokens", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${cfg.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "pm-intake-ephemeral",
+        expires_on: new Date(Date.now() + ttlSeconds * 1000).toISOString(),
+        policies: [
+          { effect: "allow", resources: {}, permission_groups: [] },
+        ],
+      }),
+    })
+    if (!res.ok) return null
+    const data = (await res.json()) as any
+    return (data?.result?.value as string) ?? null
+  } catch {
+    return null
+  }
+}
