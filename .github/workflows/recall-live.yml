@@ -1,0 +1,16 @@
+name: recall-live
+on:
+  workflow_dispatch: {}
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: recall-prototype
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install
+      - name: Live CF embedding demo (read-only inference)
+        env:
+          CF_PARENT_TOKEN: ${{ secrets.CF_PARENT_TOKEN }}
+        run: bun scripts/cf-live-demo.ts
