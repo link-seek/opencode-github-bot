@@ -1,0 +1,9 @@
+# 本仓职责（给 Jev repo_fit 当标尺，只讲自己，不提其他仓）
+accept:
+  - 本 action 接线问题：review / fix-issue 两模式、action.yml 参数、权限、模型对接
+  - 本 plugin 问题：gh-pr-comment / gh-pr-review / finish-review / finish-fix 四个 tool、pr-review / issue-fix 两个 skill、prompt 与模板
+  - 本仓 PM 四件套（intake/拆分/指派/督办）与文档、单测
+reject:
+  - OpenCode 本体 bug（请去上游 anomalyco/opencode）
+  - 在自己仓用本包时碰到的业务需求（请回自己仓提）
+notes: 只收本包的事，不收别仓的事；语义模糊放行由 Jev 判，硬词命中直接拒。
