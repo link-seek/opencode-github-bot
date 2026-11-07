@@ -1,6 +1,7 @@
 name: recall-live
 on:
-  workflow_dispatch: {}
+  push:
+    branches: [recall-prototype]
 jobs:
   live:
     runs-on: ubuntu-latest
