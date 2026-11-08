@@ -74,5 +74,6 @@ describe("recallQuery", () => {
     expect(q).toContain(" OR ")
     expect(q).not.toMatch(/\bfor\b/)
     expect(q.toLowerCase()).toContain("badge")
+    expect(q.split(" OR ").length).toBeLessThanOrEqual(5)
   })
 })

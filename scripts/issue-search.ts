@@ -15,7 +15,9 @@ export function recallQuery(title: string, body: string): string {
     .replace(/[^a-z0-9\u4e00-\u9fff]+/g, " ")
     .split(/\s+/)
     .filter((t) => t.length > 2 && !STOP.has(t))
-  return [...new Set(toks)].slice(0, 8).join(" OR ")
+  // GitHub search allows at most 5 AND/OR/NOT operators: cap at 5 terms.
+  const uniq = [...new Set(toks)].sort((a, b) => b.length - a.length).slice(0, 5)
+  return uniq.join(" OR ")
 }
 
 export async function searchTopCandidates(
