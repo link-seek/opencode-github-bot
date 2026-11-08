@@ -196,6 +196,7 @@ runs:
         echo "Context written: $(wc -c < .opencode/issue-context.md) bytes"
 
     - name: Run OpenCode v2
+      if: inputs.mode != 'intake'
       shell: bash
       env:
         MODEL: ${{ inputs.model }}
