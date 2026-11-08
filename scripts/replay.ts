@@ -17,13 +17,16 @@ const role = "opencode-github-bot: action wiring, plugin tools, prompt; reject u
 for (const n of nums) {
   try {
     const issue = await gh(`/repos/${repo}/issues/${n}`) as any
-    const out = await jevIntake({
-      role,
-      freshTitle: issue.title ?? "",
-      freshBody: (issue.body ?? "").slice(0, 1500),
-      candidates: [],
-    })
-    console.log(`#${n} | fit=${out?.repo_fit.toFixed(2)} clear=${out?.is_clear.toFixed(2)} type=${out?.type}(${out?.typeConfidence.toFixed(2)}) size=${out?.size.toFixed(2)} pri=${out?.priority.toFixed(2)} dup=${out?.duplicate.toFixed(2)} | ${issue.title?.slice(0, 50)}`)
+    const out = await jevIntake(
+      {
+        role,
+        freshTitle: issue.title ?? "",
+        freshBody: (issue.body ?? "").slice(0, 1500),
+      },
+      [],
+    )
+    const dup = out?.duplicate == null ? "n/a" : out.duplicate.toFixed(2)
+    console.log(`#${n} | fit=${out?.repo_fit.toFixed(2)} clear=${out?.is_clear.toFixed(2)} type=${out?.type}(${out?.typeConfidence.toFixed(2)}) size=${out?.size.toFixed(2)} pri=${out?.priority.toFixed(2)} dup=${dup} conf=${out ? [out.confidences.is_clear, out.confidences.size, out.confidences.priority].map((c) => c.toFixed(2)).join("/") : "-"} | ${issue.title?.slice(0, 50)}`)
   } catch (e: any) {
     console.log(`#${n} ERROR ${e.message}`)
   }

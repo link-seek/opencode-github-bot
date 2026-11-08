@@ -4,6 +4,22 @@
  */
 export interface SearchDoc { number: number; title: string; summary: string }
 
+const STOP = new Set(
+  "for,the,and,or,to,of,a,an,in,on,is,it,this,that,with,add,加,的".split(","),
+)
+
+/** Build an OR keyword query from title+body (recall prefilter). */
+export function recallQuery(title: string, body: string): string {
+  const toks = `${title} ${body}`
+    .toLowerCase()
+    .replace(/[^a-z0-9\u4e00-\u9fff]+/g, " ")
+    .split(/\s+/)
+    .filter((t) => t.length > 2 && !STOP.has(t))
+  // GitHub search allows at most 5 AND/OR/NOT operators: cap at 5 terms.
+  const uniq = [...new Set(toks)].sort((a, b) => b.length - a.length).slice(0, 5)
+  return uniq.join(" OR ")
+}
+
 export async function searchTopCandidates(
   repo: string,
   query: string,
