@@ -35,6 +35,7 @@ jobs:
         uses: ./
         with:
           model: opencode/beam-free
+          llm-api-key: ${{ secrets.OPENCODE_API_KEY }}
           github-token: ${{ secrets.AGENT_GITHUB_TOKEN }}
           mode: review
           pr-number: ${{ github.event.issue.number || github.event.pull_request.number }}
@@ -47,6 +48,7 @@ jobs:
         uses: ./
         with:
           model: opencode/beam-free
+          llm-api-key: ${{ secrets.OPENCODE_API_KEY }}
           github-token: ${{ secrets.AGENT_GITHUB_TOKEN }}
           mode: fix-issue
           issue-number: ${{ github.event.issue.number }}
