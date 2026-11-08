@@ -17,6 +17,10 @@ describe("routeIntake", () => {
     const r = routeIntake({ roleMissing: false, repoFit: 0.2, emptyTemplate: false, exactDupOf: null, isClear: 1, size: 0.1, duplicate: 0, typeConfidence: 1 })
     expect(r.decision).toBe("rejected-out-of-scope")
   })
+  test("repo borderline goes human, not auto", () => {
+    const r = routeIntake({ roleMissing: false, repoFit: 0.6, emptyTemplate: false, exactDupOf: null, isClear: 1.6, size: 0.5, duplicate: 0, typeConfidence: 1 })
+    expect(["ready", "needs-split"]).toContain(r.decision)
+  })
   test("unclear -> needs-info", () => {
     const r = routeIntake({ roleMissing: false, repoFit: 1, emptyTemplate: false, exactDupOf: null, isClear: 0.3, size: 0.1, duplicate: 0, typeConfidence: 1 })
     expect(r.decision).toBe("needs-info")
