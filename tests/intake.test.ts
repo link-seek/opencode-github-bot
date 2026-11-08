@@ -9,12 +9,12 @@ describe("routeIntake", () => {
     expect(r.labels).toContain("needs-human")
   })
   test("exact title dup closes", () => {
-    const r = routeIntake({ roleMissing: false, repoFit: 1, emptyTemplate: false, exactDupOf: 42, isClear: 1, size: 0.1, duplicate: 0, typeConfidence: 1 })
+    const r = routeIntake({ roleMissing: false, repoFit: 1, emptyTemplate: false, exactDupOf: 42, isClear: 1.6, size: 0.5, duplicate: 0, typeConfidence: 1 })
     expect(r.decision).toBe("duplicate-close")
     expect(r.linkTo).toBe(42)
   })
   test("wrong repo rejected", () => {
-    const r = routeIntake({ roleMissing: false, repoFit: 0.2, emptyTemplate: false, exactDupOf: null, isClear: 1, size: 0.1, duplicate: 0, typeConfidence: 1 })
+    const r = routeIntake({ roleMissing: false, repoFit: 0.2, emptyTemplate: false, exactDupOf: null, isClear: 1.6, size: 0.5, duplicate: 0, typeConfidence: 1 })
     expect(r.decision).toBe("rejected-out-of-scope")
   })
   test("repo borderline goes human, not auto", () => {
@@ -26,11 +26,11 @@ describe("routeIntake", () => {
     expect(r.decision).toBe("needs-info")
   })
   test("big + clear -> needs-split", () => {
-    const r = routeIntake({ roleMissing: false, repoFit: 1, emptyTemplate: false, exactDupOf: null, isClear: 1, size: 0.8, duplicate: 0, typeConfidence: 1 })
+    const r = routeIntake({ roleMissing: false, repoFit: 1, emptyTemplate: false, exactDupOf: null, isClear: 1.6, size: 1.8, duplicate: 0, typeConfidence: 1 })
     expect(r.decision).toBe("needs-split")
   })
   test("small + clear -> ready", () => {
-    const r = routeIntake({ roleMissing: false, repoFit: 1, emptyTemplate: false, exactDupOf: null, isClear: 1, size: 0.2, duplicate: 0, typeConfidence: 1 })
+    const r = routeIntake({ roleMissing: false, repoFit: 1, emptyTemplate: false, exactDupOf: null, isClear: 1.6, size: 0.5, duplicate: 0, typeConfidence: 1 })
     expect(r.decision).toBe("ready")
   })
   test("no Jev (all null) degrades to ready, never auto-close", () => {
