@@ -1,0 +1,23 @@
+name: "Setup Bun (GitHub first, npm fallback)"
+description: "Install Bun via oven-sh/setup-bun; on download failure fall back to npm i -g bun. Never fail on single-registry outage."
+inputs:
+  bun-version:
+    description: "Bun version for the primary path (default: latest)"
+    required: false
+    default: "latest"
+runs:
+  using: composite
+  steps:
+    - id: primary
+      uses: oven-sh/setup-bun@v2
+      continue-on-error: true
+      with:
+        bun-version: ${{ inputs.bun-version }}
+    - if: steps.primary.outcome == 'failure'
+      shell: bash
+      run: |
+        echo "setup-bun failed, falling back to npm registry" >&2
+        npm i -g "bun@${{ inputs.bun-version }}"
+        echo "$(npm bin -g)" >> "$GITHUB_PATH"
+    - shell: bash
+      run: bun --version
