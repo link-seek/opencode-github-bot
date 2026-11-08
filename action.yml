@@ -63,6 +63,14 @@ inputs:
     description: "Max minutes for opencode run"
     required: false
     default: "60"
+  package-source:
+    description: "Bot code source: repo (checkout, default, fastest) or npm (published package, verifies releases)"
+    required: false
+    default: "repo"
+  package-version:
+    description: "npm dist-tag/version when package-source is npm"
+    required: false
+    default: "latest"
   recall-mode:
     description: "intake recall: off | keyword | cf | custom (default keyword)"
     required: false
@@ -70,6 +78,20 @@ inputs:
 
 runs:
   using: "composite"
+  steps:
+    - name: Resolve package dir (repo checkout or published npm tarball)
+      id: pkgsrc
+      shell: bash
+      run: |
+        if [ "${{ inputs.package-source }}" = "npm" ]; then
+          PKG_TMP="$(mktemp -d)/bot-pkg"
+          mkdir -p "$PKG_TMP"
+          npm init -y --prefix "$PKG_TMP" >/dev/null 2>&1
+          npm install "opencode-github-bot@${{ inputs.package-version }}" --prefix "$PKG_TMP" --no-audit --no-fund
+          echo "dir=$PKG_TMP/node_modules/opencode-github-bot" >> "$GITHUB_OUTPUT"
+        else
+          echo "dir=$GITHUB_ACTION_PATH" >> "$GITHUB_OUTPUT"
+        fi
   steps:
     - name: Install OpenCode v2
       shell: bash
@@ -83,9 +105,9 @@ runs:
       shell: bash
       run: |
         mkdir -p .opencode/plugins .opencode/skills .opencode/agents
-        cp -r "$GITHUB_ACTION_PATH/.opencode/plugins/github-bot" .opencode/plugins/ 2>/dev/null || true
-        cp -r "$GITHUB_ACTION_PATH/.opencode/skills/"* .opencode/skills/ 2>/dev/null || true
-        cp -r "$GITHUB_ACTION_PATH/.opencode/agents/"* .opencode/agents/ 2>/dev/null || true
+        cp -r "${{ steps.pkgsrc.outputs.dir }}/.opencode/plugins/github-bot" .opencode/plugins/ 2>/dev/null || true
+        cp -r "${{ steps.pkgsrc.outputs.dir }}/.opencode/skills/"* .opencode/skills/ 2>/dev/null || true
+        cp -r "${{ steps.pkgsrc.outputs.dir }}/.opencode/agents/"* .opencode/agents/ 2>/dev/null || true
 
     - name: Gather PR context
       if: inputs.mode == 'review' && inputs.pr-number != ''
@@ -216,4 +238,4 @@ runs:
         VECTORIZE_INDEX: ${{ env.VECTORIZE_INDEX }}
       run: |
         if ! command -v bun >/dev/null 2>&1; then curl -fsSL https://bun.sh/install | bash; export PATH="$HOME/.bun/bin:$PATH"; fi
-        bun "$GITHUB_ACTION_PATH/scripts/intake-run.ts"
+        bun "${{ steps.pkgsrc.outputs.dir }}/scripts/intake-run.ts"
