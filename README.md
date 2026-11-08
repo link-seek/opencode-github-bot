@@ -56,7 +56,10 @@ Registers tools: `gh-pr-comment`, `gh-pr-review`, `finish-review`, `finish-fix`.
     github-token: ${{ secrets.AGENT_GITHUB_TOKEN }}
     mode: intake
     issue-number: ${{ github.event.issue.number }}
-    recall-mode: keyword # off | keyword | cf | custom
+    recall-mode: keyword
+  # optional: run the published npm package instead of repo files (verifies releases)
+  # package-source: npm
+  # package-version: latest # off | keyword | cf | custom
   env:
     OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }} # Jev via OpenCode gateway
 ```
