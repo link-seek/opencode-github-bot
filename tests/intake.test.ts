@@ -77,3 +77,4 @@ describe("recallQuery", () => {
     expect(q.split(" OR ").length).toBeLessThanOrEqual(5)
   })
 })
+

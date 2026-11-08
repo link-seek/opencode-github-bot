@@ -66,9 +66,12 @@ async function runLlm(n: number, title: string, body: string) {
   }
 }
 
-const args = process.argv.slice(2)
-const policyArg = (args[args.indexOf("--policy") + 1] ?? process.env.REPLAY_POLICY ?? "all").split(",")
-const nums = ((args[args.indexOf("--issues") + 1] ?? process.env.REPLAY_ISSUES ?? "").split(",").map((s) => Number(s.trim())).filter(Boolean))
+function flag(name: string): string | null {
+  const i = process.argv.indexOf(name)
+  return i >= 0 ? (process.argv[i + 1] ?? null) : null
+}
+const policyArg = (flag("--policy") ?? process.env.REPLAY_POLICY ?? "all").split(",")
+const nums = ((flag("--issues") ?? process.env.REPLAY_ISSUES ?? "").split(",").map((s) => Number(s.trim())).filter(Boolean))
 const policies = policyArg.includes("all") ? (["keyword", "jev", "llm"] as const) : (policyArg as ("keyword" | "jev" | "llm")[])
 
 console.log(`| issue | ${policies.map((p) => `${p} route`).join(" | ")} |`)
