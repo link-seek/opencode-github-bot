@@ -62,7 +62,11 @@ export async function cfEmbed(
 ): Promise<number[][]> {
   const accountId = await resolveAccountId(cfg)
   const model = cfg.embedModel!
-  const res = await fetchFn(
+  // Child tokens need ~10s propagation; retry 401s briefly.
+  let res: Response | null = null
+  for (let i = 0; i < 5; i++) {
+    if (i > 0) await new Promise((r) => setTimeout(r, 10000))
+    res = (await fetchFn(
     `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${model}`,
     {
       method: "POST",
@@ -72,8 +76,10 @@ export async function cfEmbed(
       },
       body: JSON.stringify({ text: texts }),
     },
-  )
-  if (!res.ok) throw new Error(`cf embed: ${res.status}`)
+    )) as unknown as Response
+    if (res.ok || res.status !== 401) break
+  }
+  if (!res!.ok) throw new Error(`cf embed: ${res!.status}`)
   const data = (await res.json()) as any
   const out = data?.result?.data ?? data?.result
   if (!Array.isArray(out)) throw new Error("cf embed: bad shape")
