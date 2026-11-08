@@ -1,5 +1,9 @@
 /**
- * Jev intake call (#9): ONE request, 6 questions in parallel, same state.
+ * Jev intake call (#9): ONE request, questions evaluated in parallel, same state.
+ * Follows https://docs.typesafe.ai (primitives: choice/score/noul):
+ *  - scores are NORMALIZED to 0-1 (raw score / top level number) before routing;
+ *  - score confidences gate automation (low confidence -> human);
+ *  - duplicates use one Noul per candidate (same_as_<n>), giving attribution.
  * Endpoint: OpenCode systemone gateway (OPENCODE_API_KEY) by default,
  * fallback direct TypeSafe (TS_API_KEY). Model pinned, never alias.
  */
@@ -9,15 +13,22 @@ export const JEV_MODEL_OPENCODE = "jev-1.13-free"
 export const JEV_OPENCODE_URL = "https://opencode.ai/inference/systemone/v1/systemone"
 export const JEV_DIRECT_URL = "https://api.typesafe.ai/v1/systemone"
 
+export interface CandidateDoc {
+  number: number
+  title: string
+  summary: string
+}
+
 export interface JevScores {
-  repo_fit: number
-  is_clear: number
+  repo_fit: number // noul 0-1 (already 0-1, no normalization needed)
+  is_clear: number // normalized 0-1 (raw / 2)
   type: string
-  typeConfidence: number
-  size: number
-  priority: number
-  duplicate: number
-  duplicateOf: number[]
+  typeConfidence: number // 0-1
+  size: number // normalized 0-1 (raw / 3)
+  priority: number // normalized 0-1 (raw / 3)
+  duplicate: number | null // max same_as noul, null when no candidates
+  duplicateOf: number[] // candidate numbers with noul >= 0.7
+  confidences: { is_clear: number; size: number; priority: number }
   model: string
 }
 
@@ -25,29 +36,24 @@ export interface IntakeState {
   role: string
   freshTitle: string
   freshBody: string
-  candidates: Array<{ number: number; title: string; summary: string }>
 }
 
-export function buildJevState(s: IntakeState, perDocMax = 200): string {
-  const one = (t: string) => {
-    const x = t.replace(/\s+/g, " ").trim()
-    return x.length <= perDocMax ? x : x.slice(0, perDocMax) + "…"
-  }
-  const cands = s.candidates
-    .map((c) => `#${c.number}: ${one(c.title)} — ${one(c.summary)}`)
-    .join("\n")
-  return [
-    `ROLE: ${s.role}`,
-    `NEW: ${s.freshTitle}\n${s.freshBody}`,
-    `CANDIDATES:\n${cands || "(none)"}`,
-  ].join("\n")
+/** State holds role + NEW issue only; candidates travel in per-record Nouls. */
+export function buildJevState(s: IntakeState): string {
+  return [`ROLE: ${s.role}`, `NEW: ${s.freshTitle}\n${s.freshBody}`].join("\n")
 }
 
-export function buildJevQuestions(roleHint: string) {
-  return {
+const SAME_QUESTION = "Is the NEW issue the same underlying problem as `candidate` (same problem, not just same words)?"
+
+export function buildJevQuestions(roleHint: string, candidates: CandidateDoc[]) {
+  const questions: Record<string, unknown> = {
     repo_fit: {
       type: "noul",
       instructions: `Does this issue belong to this repo? Repo duties: ${roleHint}. Answer true only if clearly in scope.`,
+      criteria: {
+        true: "Work this repo owns per its duties (action wiring, plugin tools, prompts, docs, triage pipeline)",
+        false: "Upstream OpenCode bug, another repo's scope, or a user business need",
+      },
     },
     is_clear: {
       type: "score",
@@ -65,21 +71,39 @@ export function buildJevQuestions(roleHint: string) {
     },
     size: {
       type: "score",
-      instructions: "How big is the work? XS=single small file <half day; S=2-3 files one module <1 day; M=cross-module or 3-5 files 1-3 days; L=cross-repo or architecture >3 days.",
-      criteria: ["XS trivial", "S small", "M medium needs split", "L large must split"],
+      instructions: "What is the scope of the change this issue needs?",
+      criteria: [
+        "Single small edit in one place, no cross-file impact",
+        "Change confined to one module, no API changes",
+        "Change spans modules or shared behavior, needs coordination",
+        "Cross-cutting or architectural change, must be split",
+      ],
     },
     priority: {
       type: "score",
       instructions: "How urgent/important? Higher means fix sooner.",
       criteria: ["Low", "Normal", "High", "Critical blocker"],
     },
-    duplicate: {
-      type: "score",
-      instructions: "How strongly does the NEW issue duplicate any CANDIDATE (same problem, not just same words)? 0=no overlap, 1=exact same issue.",
-      criteria: ["No overlap", "Partial overlap", "Exact duplicate"],
-    },
   }
+  for (const c of candidates) {
+    questions[`same_as_${c.number}`] = {
+      type: "noul",
+      instructions: {
+        candidate: { number: c.number, title: c.title, summary: c.summary },
+        question: SAME_QUESTION,
+      },
+    }
+  }
+  return questions
 }
+
+/** Normalize a raw score (0..topLevel) to 0-1. */
+export function normalizeScore(raw: number, levels: number): number {
+  if (!Number.isFinite(raw)) return 0
+  return Math.min(1, Math.max(0, raw / Math.max(1, levels - 1)))
+}
+
+export const SCORE_LEVELS = { is_clear: 3, size: 4, priority: 4 } as const
 
 export interface JevEndpoint {
   url: string
@@ -101,6 +125,7 @@ function num(v: any, fb = 0): number {
 /** Call Jev once. Returns null when no key (caller skips semantic triage). */
 export async function jevIntake(
   state: IntakeState,
+  candidates: CandidateDoc[],
   ep: JevEndpoint | null = jevEndpointFromEnv(),
   fetchFn: typeof fetch = fetch,
 ): Promise<JevScores | null> {
@@ -112,7 +137,7 @@ export async function jevIntake(
     body: JSON.stringify({
       model,
       state: buildJevState(state),
-      questions: buildJevQuestions(state.role),
+      questions: buildJevQuestions(state.role, candidates),
     }),
   })
   if (!res.ok) {
@@ -122,15 +147,30 @@ export async function jevIntake(
   const data = (await res.json()) as any
   const a = data?.answers ?? {}
   const typeAns = a?.type ?? {}
+  const dupOf: number[] = []
+  let dupMax = 0
+  for (const c of candidates) {
+    const v = num(a?.[`same_as_${c.number}`]?.noul, NaN)
+    if (Number.isFinite(v)) {
+      if (v > dupMax) dupMax = v
+      if (v >= 0.7) dupOf.push(c.number)
+    }
+  }
+  dupOf.sort((x, y) => x - y)
   return {
     repo_fit: num(a?.repo_fit?.noul, 0),
-    is_clear: num(a?.is_clear?.score, 0),
+    is_clear: normalizeScore(num(a?.is_clear?.score, 0), SCORE_LEVELS.is_clear),
     type: typeof typeAns?.choice === "string" ? typeAns.choice : "bug",
     typeConfidence: num(typeAns?.confidence, 0),
-    size: num(a?.size?.score, 0),
-    priority: num(a?.priority?.score, 0),
-    duplicate: num(a?.duplicate?.score, 0),
-    duplicateOf: [],
+    size: normalizeScore(num(a?.size?.score, 0), SCORE_LEVELS.size),
+    priority: normalizeScore(num(a?.priority?.score, 0), SCORE_LEVELS.priority),
+    duplicate: candidates.length > 0 ? dupMax : null,
+    duplicateOf: dupOf,
+    confidences: {
+      is_clear: num(a?.is_clear?.confidence, 0),
+      size: num(a?.size?.confidence, 0),
+      priority: num(a?.priority?.confidence, 0),
+    },
     model: data?.model ?? JEV_MODEL,
   }
 }

@@ -51,7 +51,8 @@ export function visibleComment(decision: string, opts: { linkTo?: number; scores
     case "duplicate-close":
       return `Closing as duplicate of #${opts.linkTo ?? "?"}. If this differs, reply reopen with the difference.${tail}`
     case "duplicate-review":
-      return `Possibly related to earlier issues, flagged for human check.${tail}`
+    case "needs-review":
+      return `Flagged for human check.${tail}`
     case "rejected-out-of-scope":
       return `Out of scope for this repo (see README/role).${tail}`
     case "needs-split":
@@ -164,23 +165,38 @@ export async function runIntake(env: NodeJS.ProcessEnv = process.env): Promise<R
     recallNote = "recall-failed-skip"
   }
 
-  // 4. Jev (optional): null key -> all null
+  // 4. Jev (optional): null key -> all null. Candidates travel as per-record
+  // Nouls (docs pattern), so fetch fuller text for top hits only.
+  const dupDocs: Array<{ number: number; title: string; summary: string }> = []
+  for (const h of top.slice(0, 10)) {
+    let t = `#${h.number}`;
+    let b = `recall score ${h.score.toFixed(3)}`
+    try {
+      const full = (await gh(`/repos/${repo}/issues/${h.number}`, token)) as any
+      t = String(full.title ?? t)
+      b = String(full.body ?? b).replace(/\s+/g, " ").trim().slice(0, 800)
+    } catch { /* fall back to recall summary */ }
+    dupDocs.push({ number: h.number, title: t, summary: b })
+  }
   const state: IntakeState = {
     role: roleText.split("\n").slice(0, 12).join("\n").slice(0, 1500),
     freshTitle: title,
     freshBody: body.slice(0, 3000),
-    candidates: top.slice(0, 10).map((h) => {
-      return { number: h.number, title: `#${h.number}`, summary: `score ${h.score.toFixed(3)}` }
-    }),
   }
   let scores: any = null
   try {
-    scores = await jevIntake(state)
+    scores = await jevIntake(state, dupDocs)
   } catch {
     scores = null
   }
 
   // 5. route (code, no model)
+  const lowConf =
+    scores != null &&
+    [scores.confidences?.is_clear, scores.confidences?.size, scores.confidences?.priority].some(
+      (c) => typeof c === "number" && c < 0.35,
+    )
+  const dupTop: number | null = scores?.duplicateOf?.[0] ?? null
   const res = routeIntake({
     roleMissing: false,
     repoFit: scores?.repo_fit ?? null,
@@ -188,11 +204,13 @@ export async function runIntake(env: NodeJS.ProcessEnv = process.env): Promise<R
     exactDupOf: exactDup,
     isClear: scores?.is_clear ?? null,
     size: scores?.size ?? null,
-    duplicate: scores?.duplicate ?? (top.length ? Math.max(...top.map((t) => t.score), 0) : null),
+    duplicate: scores?.duplicate ?? null,
+    duplicateTop: dupTop,
     typeConfidence: scores?.typeConfidence ?? null,
+    lowConfidence: lowConf,
   })
   const scoreStr = scores
-    ? `repo_fit=${scores.repo_fit.toFixed(2)} clear=${scores.is_clear.toFixed(2)} size=${scores.size.toFixed(2)} dup=${scores.duplicate.toFixed(2)}`
+    ? `repo_fit=${scores.repo_fit.toFixed(2)} clear=${scores.is_clear.toFixed(2)} size=${scores.size.toFixed(2)} dup=${scores.duplicate == null ? "n/a" : scores.duplicate.toFixed(2)}`
     : `recall=${recallNote}`
   await applyLabels(repo, issueNumber, token, res.labels)
   await postComment(
