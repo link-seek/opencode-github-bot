@@ -92,7 +92,6 @@ runs:
         else
           echo "dir=$GITHUB_ACTION_PATH" >> "$GITHUB_OUTPUT"
         fi
-  steps:
     - name: Install OpenCode v2
       shell: bash
       run: curl -fsSL https://opencode.ai/v2/install | bash
