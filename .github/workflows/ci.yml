@@ -27,5 +27,5 @@ jobs:
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
         run: |
           export PATH="$HOME/.opencode/bin:$PATH"
-          opencode run --agent github-bot --model "${{ vars.OPENCODE_MODEL }}" "What is 2+2? Reply with just the number." | tee /tmp/smoke.log
+          opencode run --agent github-bot --model "${{ vars.OPENCODE_REVIEW_MODEL }}" "What is 2+2? Reply with just the number." | tee /tmp/smoke.log
           grep -q "4" /tmp/smoke.log || { echo "Smoke test failed"; cat /tmp/smoke.log; exit 1; }
