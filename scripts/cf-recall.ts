@@ -123,6 +123,7 @@ export async function cfMintChild(
     const want = ["Vectorize Read", "Workers AI Read"]
     const ids = want.map((n) => groups.find((g) => g.name === n)?.id).filter(Boolean) as string[]
     if (ids.length !== want.length) return null
+    const noMs = (d: Date) => d.toISOString().replace(/\.\d+Z$/, "Z")
     const now = new Date()
     const res = await fetchFn("https://api.cloudflare.com/client/v4/user/tokens", {
       method: "POST",
@@ -132,12 +133,12 @@ export async function cfMintChild(
         policies: [
           {
             effect: "allow",
-            resources: { [`com.cloudflare.api.account.${accountId}`]: {} },
+            resources: { [`com.cloudflare.api.account.${accountId}`]: "*" },
             permission_groups: ids.map((id) => ({ id })),
           },
         ],
-        expires_on: new Date(now.getTime() + ttlSeconds * 1000).toISOString(),
-        not_before: now.toISOString(),
+        expires_on: noMs(new Date(now.getTime() + ttlSeconds * 1000)),
+        not_before: noMs(now),
       }),
     })
     if (!res.ok) return null
