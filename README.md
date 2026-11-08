@@ -26,7 +26,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: link-seek/opencode-github-bot@v0.2.9
         with:
-          model: ${{ vars.OPENCODE_REVIEW_MODEL }}
+          model: ${{ vars.OPENCODE_MODEL }}
           github-token: ${{ secrets.AGENT_GITHUB_TOKEN }}
           mode: review
           pr-number: ${{ github.event.pull_request.number }}
@@ -52,7 +52,7 @@ Registers tools: `gh-pr-comment`, `gh-pr-review`, `finish-review`, `finish-fix`.
 ```yaml
 - uses: link-seek/opencode-github-bot@v0.3.0
   with:
-    model: ${{ vars.OPENCODE_REVIEW_MODEL }}
+    model: ${{ vars.OPENCODE_MODEL }}
     github-token: ${{ secrets.AGENT_GITHUB_TOKEN }}
     mode: intake
     issue-number: ${{ github.event.issue.number }}
