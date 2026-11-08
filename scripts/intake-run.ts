@@ -219,7 +219,35 @@ export async function runIntake(env: NodeJS.ProcessEnv = process.env): Promise<R
     token,
     `${visibleComment(res.decision, { linkTo: res.linkTo, scores: scoreStr })}\n${hiddenMarker({ v: 1, decision: res.decision, labels: res.labels, scores, topK: top, recall: recallNote, model: scores?.model ?? null })}`,
   )
+  await appendRecord({
+    v: 1,
+    ts: new Date().toISOString(),
+    repo,
+    issue: issueNumber,
+    decision: res.decision,
+    labels: res.labels,
+    linkTo: res.linkTo ?? null,
+    scores,
+    confidences: scores?.confidences ?? null,
+    topK: top,
+    recall: recallNote,
+    model: scores?.model ?? null,
+  });
   return res
+}
+
+export function recordPath(): string {
+  return `${process.cwd()}/pm-intake-records.jsonl`
+}
+
+/** Append-only dataset row for paper eval. Never throws: logging must not break triage. */
+export async function appendRecord(row: Record<string, unknown>): Promise<void> {
+  try {
+    const fs = await import("node:fs");
+    await fs.promises.appendFile(recordPath(), JSON.stringify(row) + "\n", "utf8");
+  } catch {
+    /* logging must never break triage */
+  }
 }
 
 async function applyLabels(repo: string, n: number, token: string, labels: string[]) {
