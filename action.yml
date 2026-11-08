@@ -20,7 +20,7 @@ inputs:
     description: "GitHub token for API access (required)"
     required: true
   mode:
-    description: "review | fix-issue"
+    description: "review | fix-issue | intake"
     required: false
     default: "review"
   issue-number:
@@ -63,6 +63,10 @@ inputs:
     description: "Max minutes for opencode run"
     required: false
     default: "60"
+  recall-mode:
+    description: "intake recall: off | keyword | cf | custom (default keyword)"
+    required: false
+    default: "keyword"
 
 runs:
   using: "composite"
@@ -198,3 +202,18 @@ runs:
         else
           opencode run --agent github-bot --model "${MODEL}" "Mode: ${MODE}. Repository: ${REPOSITORY}. PR number: ${PR_NUMBER}. Issue number: ${ISSUE_NUMBER}. If mode is review, read .opencode/pr-context.md and use the pr-review skill. If mode is fix-issue, read .opencode/issue-context.md and use the issue-fix skill."
         fi
+    - name: Run intake triage (no-LLM except Jev)
+      if: inputs.mode == 'intake'
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        ISSUE_NUMBER: ${{ inputs.issue-number }}
+        RECALL_MODE: ${{ inputs.recall-mode }}
+        OPENCODE_API_KEY: ${{ env.OPENCODE_API_KEY }}
+        TS_API_KEY: ${{ env.TS_API_KEY }}
+        CF_PARENT_TOKEN: ${{ env.CF_PARENT_TOKEN }}
+        VECTORIZE_INDEX: ${{ env.VECTORIZE_INDEX }}
+      run: |
+        if ! command -v bun >/dev/null 2>&1; then curl -fsSL https://bun.sh/install | bash; export PATH="$HOME/.bun/bin:$PATH"; fi
+        bun "$GITHUB_ACTION_PATH/scripts/intake-run.ts"
