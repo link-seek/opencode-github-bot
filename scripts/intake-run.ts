@@ -134,8 +134,11 @@ export async function runIntake(env: NodeJS.ProcessEnv = process.env): Promise<R
         // Strict: data calls ONLY with minted child; mint failure -> keyword fallback.
         const child = await cfMintChild(cfg).catch(() => null)
         if (!child) {
-          top = []
-          recallNote = "mint-failed-keyword-fallback"
+          // Strict: no child -> no CF at all; real keyword fallback, not empty.
+          const cands = await searchTopCandidates(repo, title, 30, fetch, token)
+          const docs: IssueDoc[] = cands.map((c) => ({ number: c.number, title: c.title, body: c.summary }))
+          top = keywordRecallTopK({ number: issueNumber, title, body }, docs, 10)
+          recallNote = "mint-failed-keyword"
         } else {
           const childCfg = { ...cfg, token: child }
           const cands = await searchTopCandidates(repo, title, 30, fetch, token)
@@ -149,6 +152,7 @@ export async function runIntake(env: NodeJS.ProcessEnv = process.env): Promise<R
             .slice(0, 10)
           recallNote = mode
         }
+      }
     } else {
       const cands = await searchTopCandidates(repo, title, 30, fetch, token)
       const docs: IssueDoc[] = cands.map((c) => ({ number: c.number, title: c.title, body: c.summary }))
