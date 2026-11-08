@@ -23,6 +23,8 @@ jobs:
       - name: Install OpenCode v2
         run: curl -fsSL https://opencode.ai/v2/install | bash
       - name: Smoke test — agent loads and responds
+        env:
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
         run: |
           export PATH="$HOME/.opencode/bin:$PATH"
           opencode run --agent github-bot --model opencode/beam-free "What is 2+2? Reply with just the number." | tee /tmp/smoke.log
