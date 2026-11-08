@@ -1,0 +1,19 @@
+name: llm-probe
+on:
+  push:
+    branches: [paper-prep]
+jobs:
+  probe:
+    if: contains(github.event.head_commit.message, 'llm-probe')
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+        run: |
+          for M in "glm-5.3-flash-free" "deepseek-v4.1-flash-free" "beam-free"; do
+            echo "=== model=$M ==="
+            curl -s -o /tmp/out.json -w "http=%{http_code}\n" --max-time 90 https://opencode.ai/inference/openai/v1/chat/completions \
+              -H "Authorization: Bearer $OPENCODE_API_KEY" -H "Content-Type: application/json" \
+              -d "{\"model\":\"$M\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}],\"max_tokens\":5}" || true
+            head -c 300 /tmp/out.json; echo
+          done
