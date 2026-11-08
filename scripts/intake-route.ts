@@ -4,7 +4,7 @@
  * Output: decision + labels. Thresholds versioned here.
  */
 
-export const THRESH = { auto: 0.9, human: 0.7, typeMin: 0.8 } as const
+export const THRESH = { repoReject: 0.5, clearLow: 1.0, sizeSplit: 1.5, dupAuto: 0.9, dupHuman: 0.7, typeMin: 0.8 } as const;
 
 export type Decision =
   | "rejected-out-of-scope"
