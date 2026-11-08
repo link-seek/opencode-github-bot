@@ -14,5 +14,6 @@ jobs:
       - uses: ./.github/actions/setup-bun
         with:
           bun-version: "0.0.0-no-such-version"
+          fallback-version: "latest"
       - run: bun --version && echo FALLBACK_OK
         shell: bash
