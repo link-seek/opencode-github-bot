@@ -34,7 +34,7 @@ jobs:
         if: github.event_name != 'issues'
         uses: ./
         with:
-          model: opencode/beam-free
+          model: ${{ vars.OPENCODE_MODEL }}
           llm-api-key: ${{ secrets.OPENCODE_API_KEY }}
           github-token: ${{ secrets.AGENT_GITHUB_TOKEN }}
           mode: review
@@ -47,7 +47,7 @@ jobs:
         if: github.event_name == 'issues'
         uses: ./
         with:
-          model: opencode/beam-free
+          model: ${{ vars.OPENCODE_MODEL }}
           llm-api-key: ${{ secrets.OPENCODE_API_KEY }}
           github-token: ${{ secrets.AGENT_GITHUB_TOKEN }}
           mode: fix-issue
