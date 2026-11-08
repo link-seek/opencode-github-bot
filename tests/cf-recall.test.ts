@@ -15,7 +15,7 @@ describe("cfConfigFromEnv", () => {
 
 describe("cfMintChild", () => {
   test("returns null when group lookup fails (strict: no parent use)", async () => {
-    const badFetch = (async () => ({ ok: false, status: 403, json: async () => ({}) })) as any) as typeof fetch
+    const badFetch = (async () => ({ ok: false, status: 403, json: async () => ({}) }) as unknown as typeof fetch
     const r = await cfMintChild({ token: "x" } as any, 600, badFetch)
     expect(r).toBeNull()
   })
