@@ -79,7 +79,8 @@ export async function cfEmbed(
     )) as unknown as Response
     if (res.ok || res.status !== 401) break
   }
-  if (!res!.ok) throw new Error(`cf embed: ${res!.status}`)
+  const status = res?.status
+  if (!res || !res.ok) throw new Error(`cf embed: ${status}`)
   const data = (await res.json()) as any
   const out = data?.result?.data ?? data?.result
   if (!Array.isArray(out)) throw new Error("cf embed: bad shape")
