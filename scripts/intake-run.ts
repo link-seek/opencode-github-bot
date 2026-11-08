@@ -8,7 +8,7 @@ import { keywordRecallTopK, semanticRecallTopK, resolveRecallMode, type IssueDoc
 import { cfConfigFromEnv, cfEmbed, cfMintChild, resolveAccountId } from "./cf-recall"
 import { jevIntake, type IntakeState } from "./jev"
 import { routeIntake, type RouteResult } from "./intake-route"
-import { searchTopCandidates } from "./issue-search"
+import { recallQuery, searchTopCandidates } from "./issue-search"
 
 const GH = "https://api.github.com"
 
@@ -137,13 +137,13 @@ export async function runIntake(env: NodeJS.ProcessEnv = process.env): Promise<R
         const child = await cfMintChild(cfg).catch(() => null)
         if (!child) {
           // Strict: no child -> no CF at all; real keyword fallback, not empty.
-          const cands = await searchTopCandidates(repo, title, 30, fetch, token)
+          const cands = await searchTopCandidates(repo, recallQuery(title, body), 30, fetch, token)
           const docs: IssueDoc[] = cands.map((c) => ({ number: c.number, title: c.title, body: c.summary }))
           top = keywordRecallTopK({ number: issueNumber, title, body }, docs, 10)
           recallNote = "mint-failed-keyword"
         } else {
           const childCfg = { ...cfg, token: child }
-          const cands = await searchTopCandidates(repo, title, 30, fetch, token)
+          const cands = await searchTopCandidates(repo, recallQuery(title, body), 30, fetch, token)
           const docs: IssueDoc[] = cands.map((c) => ({ number: c.number, title: c.title, body: c.summary }))
           const vecs = await cfEmbed([`${title}\n${body}`, ...docs.map((d) => `${d.title}\n${d.body ?? ""}`)], childCfg)
           const fq = vecs[0]
@@ -156,7 +156,7 @@ export async function runIntake(env: NodeJS.ProcessEnv = process.env): Promise<R
         }
       }
     } else {
-      const cands = await searchTopCandidates(repo, title, 30, fetch, token)
+      const cands = await searchTopCandidates(repo, recallQuery(title, body), 30, fetch, token)
       const docs: IssueDoc[] = cands.map((c) => ({ number: c.number, title: c.title, body: c.summary }))
       top = keywordRecallTopK({ number: issueNumber, title, body }, docs, 10)
     }

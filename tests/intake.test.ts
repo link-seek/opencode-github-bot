@@ -66,3 +66,13 @@ describe("routeIntake", () => {
     expect(r.decision).toBe("ready")
   })
 })
+
+describe("recallQuery", () => {
+  test("ORs distinctive tokens, drops stopwords", async () => {
+    const { recallQuery } = await import("../scripts/issue-search")
+    const q = recallQuery("probe: docs badge for README license", "Background probe body")
+    expect(q).toContain(" OR ")
+    expect(q).not.toMatch(/\bfor\b/)
+    expect(q.toLowerCase()).toContain("badge")
+  })
+})
