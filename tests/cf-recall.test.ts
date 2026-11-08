@@ -24,7 +24,7 @@ describe("cfMintChild", () => {
     const fake = (async (url: any, init?: any) => {
       calls.push(String(url))
       if (String(url).includes("permission_groups"))
-        return { ok: true, json: async () => ({ result: [{ id: "g1", name: "Vectorize Read" }, { id: "g2", name: "Workers AI Read" }] }) } as any
+        return { ok: true, json: async () => ({ result: [{ id: "g1", name: "Vectorize Read" }, { id: "g2", name: "Workers AI Write" }] }) } as any
       return { ok: true, json: async () => ({ result: { value: "child-123" } }) } as any
     }) as unknown as typeof fetch
     const r = await cfMintChild({ token: "parent", accountId: "acc" } as any, 600, fake)

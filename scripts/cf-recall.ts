@@ -110,7 +110,7 @@ export async function cfQuery(
 
 /**
  * Mint an ephemeral least-privilege child token (strict).
- * Flow: parent -> list permission groups -> pick Vectorize Read + Workers AI Read
+ * Flow: parent -> list permission groups -> pick Vectorize Read + Workers AI Write
  * -> create token scoped to this account only, short TTL.
  * Returns null on ANY failure; caller must fall back to keyword and MUST NOT
  * use the parent token for data calls.
@@ -127,7 +127,7 @@ export async function cfMintChild(
     })
     if (!gRes.ok) return null
     const groups = (((await gRes.json()) as any)?.result ?? []) as Array<{ id: string; name: string }>
-    const want = ["Vectorize Read", "Workers AI Read"]
+    const want = ["Vectorize Read", "Workers AI Write"]
     const ids = want.map((n) => groups.find((g) => g.name === n)?.id).filter(Boolean) as string[]
     if (ids.length !== want.length) return null
     const noMs = (d: Date) => d.toISOString().replace(/\.\d+Z$/, "Z")

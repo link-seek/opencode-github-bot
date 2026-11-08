@@ -1,6 +1,9 @@
-const token = process.env.CF_PARENT_TOKEN!
-const H = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }
-const gs: any = await (await fetch("https://api.cloudflare.com/client/v4/user/tokens/permission_groups", { headers: H })).json()
-for (const g of (gs.result ?? []) as any[]) {
-  if (/vectorize|workers ai/i.test(g.name)) console.log("-", g.name)
-}
+import { cfConfigFromEnv, cfMintChild, cfEmbed, resolveAccountId } from "./cf-recall"
+const cfg = cfConfigFromEnv()
+if (!cfg) { console.log("NO_CFG"); process.exit(0) }
+await resolveAccountId(cfg)
+const child = await cfMintChild(cfg, 600)
+if (!child) { console.log("MINT_NULL_FALLBACK_KEYWORD"); process.exit(0) }
+console.log(`MINT_OK len=${child.length}`)
+const vecs = await cfEmbed(["probe: intake triage"], { ...cfg, token: child })
+console.log(`CHILD_EMBED_OK dims=${vecs[0].length}`)
