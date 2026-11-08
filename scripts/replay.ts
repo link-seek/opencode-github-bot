@@ -5,7 +5,7 @@
  *   LLM_BASE_URL, LLM_API_KEY, LLM_JUDGE_MODEL.
  * Read-only except optional LLM spend (pennies). Prints markdown table to stdout.
  */
-import { jevIntake, normalizeScore, SCORE_LEVELS } from "./jev"
+import { jevIntake, jevEndpointFromEnv, normalizeScore, SCORE_LEVELS } from "./jev"
 import { keywordRecallTopK, type IssueDoc } from "./recall"
 import { searchTopCandidates, recallQuery } from "./issue-search"
 import { llmJudge } from "./llm-judge"
@@ -43,9 +43,9 @@ async function runKeyword(n: number, title: string, body: string) {
 
 async function runJev(n: number, title: string, body: string) {
   const t0 = Date.now()
-  const out = await jevIntake({ role, freshTitle: title, freshBody: body.slice(0, 1500) }, [], null, fetch).catch(() => null)
+  const out = await jevIntake({ role, freshTitle: title, freshBody: body.slice(0, 1500) }, [], undefined, fetch).catch((e) => ({ __error: String(e && (e as Error).message || e) }) as any)
   void n
-  if (!out) return { route: "skip(no-key)", dup: null as number | null, ms: Date.now() - t0, cost: 0, s: null as any }
+  if (!out || (out as any).__error) return { route: `skip(${(out as any)?.__error ?? 'no-key'})`, dup: null as number | null, ms: Date.now() - t0, cost: 0, s: null as any }
   return {
     route: out.repo_fit < 0.5 ? "reject" : out.duplicate != null && out.duplicate >= 0.9 ? "dup-close" : out.duplicate != null && out.duplicate >= 0.7 ? "dup-review" : out.is_clear < 0.5 ? "needs-info" : out.size >= 0.5 ? "split" : "ready",
     dup: out.duplicate, ms: Date.now() - t0, cost: 0, s: out,

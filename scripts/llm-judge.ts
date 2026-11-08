@@ -60,7 +60,7 @@ export async function llmJudge(
       response_format: { type: "json_object" },
     }),
   });
-  if (!res.ok) throw new Error(`llm-judge: ${res.status} ${(await res.text().catch(() => "")).slice(0, 200)}`);
+  if (!res.ok) throw new Error(`llm-judge: ${res.status} ${(await res.text().catch(() => "")).slice(0, 500)}`);
   const data = (await res.json()) as any;
   const text: string = data?.choices?.[0]?.message?.content ?? "{}";
   const start = text.indexOf("{");
