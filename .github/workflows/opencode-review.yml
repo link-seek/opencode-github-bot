@@ -28,7 +28,7 @@ jobs:
       - name: Run OpenCode review
         uses: ./
         with:
-          model: opencode/beam-free
+          model: ${{ vars.OPENCODE_REVIEW_MODEL }}
           llm-api-key: ${{ secrets.OPENCODE_API_KEY }}
           github-token: ${{ secrets.AGENT_GITHUB_TOKEN }}
           mode: review
