@@ -48,12 +48,19 @@ export async function cfAccountId(cfg: CfConfig): Promise<string> {
 }
 
 /** Embed texts via Workers AI. Returns one vector per text. */
+export async function resolveAccountId(cfg: CfConfig): Promise<string> {
+  if (cfg.accountId) return cfg.accountId
+  const id = await cfAccountId(cfg)
+  cfg.accountId = id
+  return id
+}
+
 export async function cfEmbed(
   texts: string[],
   cfg: CfConfig,
   fetchFn: typeof fetch = fetch,
 ): Promise<number[][]> {
-  const accountId = await cfAccountId(cfg)
+  const accountId = await resolveAccountId(cfg)
   const model = cfg.embedModel!
   const res = await fetchFn(
     `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${model}`,
@@ -80,7 +87,7 @@ export async function cfQuery(
   topK = 10,
   fetchFn: typeof fetch = fetch,
 ): Promise<Array<{ number: number; score: number }>> {
-  const accountId = await cfAccountId(cfg)
+  const accountId = await resolveAccountId(cfg)
   const index = cfg.index!
   const res = await fetchFn(
     `https://api.cloudflare.com/client/v4/accounts/${accountId}/vectorize/v2/indexes/${index}/query`,

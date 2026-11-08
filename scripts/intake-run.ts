@@ -5,7 +5,7 @@
  * Missing provider/key -> skip that stage (unknown), never block.
  */
 import { keywordRecallTopK, semanticRecallTopK, resolveRecallMode, type IssueDoc } from "./recall"
-import { cfConfigFromEnv, cfEmbed, cfMintChild } from "./cf-recall"
+import { cfConfigFromEnv, cfEmbed, cfMintChild, resolveAccountId } from "./cf-recall"
 import { jevIntake, type IntakeState } from "./jev"
 import { routeIntake, type RouteResult } from "./intake-route"
 import { searchTopCandidates } from "./issue-search"
@@ -131,7 +131,8 @@ export async function runIntake(env: NodeJS.ProcessEnv = process.env): Promise<R
         top = []
         recallNote = "no-cfg-skip"
       } else {
-        // Strict: data calls ONLY with minted child; mint failure -> keyword fallback.
+        // Strict: account resolved with parent, data calls ONLY with minted child.
+        try { await resolveAccountId(cfg) } catch { /* keep going, mint will fail -> keyword */ }
         const child = await cfMintChild(cfg).catch(() => null)
         if (!child) {
           // Strict: no child -> no CF at all; real keyword fallback, not empty.
