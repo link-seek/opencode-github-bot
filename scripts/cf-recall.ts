@@ -48,14 +48,25 @@ export async function cfAccountId(cfg: CfConfig): Promise<string> {
 }
 
 /** Embed texts via Workers AI. Returns one vector per text. */
+export async function resolveAccountId(cfg: CfConfig): Promise<string> {
+  if (cfg.accountId) return cfg.accountId
+  const id = await cfAccountId(cfg)
+  cfg.accountId = id
+  return id
+}
+
 export async function cfEmbed(
   texts: string[],
   cfg: CfConfig,
   fetchFn: typeof fetch = fetch,
 ): Promise<number[][]> {
-  const accountId = await cfAccountId(cfg)
+  const accountId = await resolveAccountId(cfg)
   const model = cfg.embedModel!
-  const res = await fetchFn(
+  // Child tokens need ~10s propagation; retry 401s briefly.
+  let res: Response | null = null
+  for (let i = 0; i < 5; i++) {
+    if (i > 0) await new Promise((r) => setTimeout(r, 10000))
+    res = (await fetchFn(
     `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${model}`,
     {
       method: "POST",
@@ -65,8 +76,11 @@ export async function cfEmbed(
       },
       body: JSON.stringify({ text: texts }),
     },
-  )
-  if (!res.ok) throw new Error(`cf embed: ${res.status}`)
+    )) as unknown as Response
+    if (res.ok || res.status !== 401) break
+  }
+  const status = res?.status
+  if (!res || !res.ok) throw new Error(`cf embed: ${status}`)
   const data = (await res.json()) as any
   const out = data?.result?.data ?? data?.result
   if (!Array.isArray(out)) throw new Error("cf embed: bad shape")
@@ -80,7 +94,7 @@ export async function cfQuery(
   topK = 10,
   fetchFn: typeof fetch = fetch,
 ): Promise<Array<{ number: number; score: number }>> {
-  const accountId = await cfAccountId(cfg)
+  const accountId = await resolveAccountId(cfg)
   const index = cfg.index!
   const res = await fetchFn(
     `https://api.cloudflare.com/client/v4/accounts/${accountId}/vectorize/v2/indexes/${index}/query`,
@@ -102,9 +116,11 @@ export async function cfQuery(
 }
 
 /**
- * Mint an ephemeral child token (parent -> child, least privilege).
- * Best-effort: parent without token-create permission returns null,
- * caller falls back to parent with a warning (prototype), strict later.
+ * Mint an ephemeral least-privilege child token (strict).
+ * Flow: parent -> list permission groups -> pick Vectorize Read + Workers AI Write
+ * -> create token scoped to this account only, short TTL.
+ * Returns null on ANY failure; caller must fall back to keyword and MUST NOT
+ * use the parent token for data calls.
  */
 export async function cfMintChild(
   cfg: CfConfig,
@@ -112,15 +128,31 @@ export async function cfMintChild(
   fetchFn: typeof fetch = fetch,
 ): Promise<string | null> {
   try {
+    const accountId = await cfAccountId(cfg)
+    const gRes = await fetchFn("https://api.cloudflare.com/client/v4/user/tokens/permission_groups", {
+      headers: { Authorization: `Bearer ${cfg.token}`, "Content-Type": "application/json" },
+    })
+    if (!gRes.ok) return null
+    const groups = (((await gRes.json()) as any)?.result ?? []) as Array<{ id: string; name: string }>
+    const want = ["Vectorize Read", "Workers AI Write"]
+    const ids = want.map((n) => groups.find((g) => g.name === n)?.id).filter(Boolean) as string[]
+    if (ids.length !== want.length) return null
+    const noMs = (d: Date) => d.toISOString().replace(/\.\d+Z$/, "Z")
+    const now = new Date()
     const res = await fetchFn("https://api.cloudflare.com/client/v4/user/tokens", {
       method: "POST",
       headers: { Authorization: `Bearer ${cfg.token}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         name: "pm-intake-ephemeral",
-        expires_on: new Date(Date.now() + ttlSeconds * 1000).toISOString(),
         policies: [
-          { effect: "allow", resources: {}, permission_groups: [] },
+          {
+            effect: "allow",
+            resources: { [`com.cloudflare.api.account.${accountId}`]: "*" },
+            permission_groups: ids.map((id) => ({ id })),
+          },
         ],
+        expires_on: noMs(new Date(now.getTime() + ttlSeconds * 1000)),
+        not_before: noMs(now),
       }),
     })
     if (!res.ok) return null
