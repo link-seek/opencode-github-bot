@@ -102,9 +102,11 @@ export async function cfQuery(
 }
 
 /**
- * Mint an ephemeral child token (parent -> child, least privilege).
- * Best-effort: parent without token-create permission returns null,
- * caller falls back to parent with a warning (prototype), strict later.
+ * Mint an ephemeral least-privilege child token (strict).
+ * Flow: parent -> list permission groups -> pick Vectorize Read + Workers AI Read
+ * -> create token scoped to this account only, short TTL.
+ * Returns null on ANY failure; caller must fall back to keyword and MUST NOT
+ * use the parent token for data calls.
  */
 export async function cfMintChild(
   cfg: CfConfig,
@@ -112,15 +114,30 @@ export async function cfMintChild(
   fetchFn: typeof fetch = fetch,
 ): Promise<string | null> {
   try {
+    const accountId = await cfAccountId(cfg)
+    const gRes = await fetchFn("https://api.cloudflare.com/client/v4/user/tokens/permission_groups", {
+      headers: { Authorization: `Bearer ${cfg.token}`, "Content-Type": "application/json" },
+    })
+    if (!gRes.ok) return null
+    const groups = (((await gRes.json()) as any)?.result ?? []) as Array<{ id: string; name: string }>
+    const want = ["Vectorize Read", "Workers AI Read"]
+    const ids = want.map((n) => groups.find((g) => g.name === n)?.id).filter(Boolean) as string[]
+    if (ids.length !== want.length) return null
+    const now = new Date()
     const res = await fetchFn("https://api.cloudflare.com/client/v4/user/tokens", {
       method: "POST",
       headers: { Authorization: `Bearer ${cfg.token}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         name: "pm-intake-ephemeral",
-        expires_on: new Date(Date.now() + ttlSeconds * 1000).toISOString(),
         policies: [
-          { effect: "allow", resources: {}, permission_groups: [] },
+          {
+            effect: "allow",
+            resources: { [`com.cloudflare.api.account.${accountId}`]: {} },
+            permission_groups: ids.map((id) => ({ id })),
+          },
         ],
+        expires_on: new Date(now.getTime() + ttlSeconds * 1000).toISOString(),
+        not_before: now.toISOString(),
       }),
     })
     if (!res.ok) return null
@@ -129,4 +146,5 @@ export async function cfMintChild(
   } catch {
     return null
   }
+}
 }
