@@ -35,7 +35,8 @@ jobs:
             zen/*)
               JEV_URL="https://opencode.ai/zen/v1/systemone"
               MODEL_ID="${MODEL#zen/}"
-              KEY="${ZEN_API_KEY:-}"
+              KEY="${ZEN_API_KEY:-$OPENCODE_API_KEY}"
+              : "${KEY:?need secrets.OPENCODE_API_KEY (or ZEN_API_KEY) for Zen probe}"
               ;;
             *)
               JEV_URL="https://opencode.ai/inference/systemone/v1/systemone"
