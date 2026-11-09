@@ -1,8 +1,9 @@
 /**
  * Calibration replay (#9 paper eval): same issues through 3 policies.
  * Usage: bun scripts/replay.ts [--policy keyword|jev|llm|all] [--issues 1,2,3]
- * Env: GITHUB_TOKEN, GITHUB_REPOSITORY, REPLAY_ISSUES, OPENCODE_API_KEY/TS_API_KEY,
- *   LLM_BASE_URL, LLM_API_KEY, LLM_JUDGE_MODEL.
+ * Env: GITHUB_TOKEN, GITHUB_REPOSITORY, REPLAY_ISSUES, JEV_URL/JEV_MODEL/JEV_API_KEY
+ *   (compat: OPENCODE_API_KEY/TS_API_KEY), LLM_BASE_URL, LLM_API_KEY,
+ *   LLM_JUDGE_MODEL (default: OPENCODE_MODEL).
  * Read-only except optional LLM spend (pennies). Prints markdown table to stdout.
  */
 import { jevIntake, jevEndpointFromEnv, normalizeScore, SCORE_LEVELS } from "./jev"
@@ -66,7 +67,7 @@ async function runJev(n: number, title: string, body: string) {
     const byNum = new Map(docs.map((d) => [d.number, d]));
     cands = kwTop.map((h) => ({ number: h.number, title: byNum.get(h.number)?.title ?? `#${h.number}`, summary: (byNum.get(h.number)?.body ?? "").slice(0, 300) }));
   } catch { /* no candidates -> duplicate unknown */ }
-  const out = await jevIntake({ role, freshTitle: title, freshBody: body.slice(0, 1500) }, cands, undefined, fetch).catch((e) => ({ __error: String(e && (e as Error).message || e) }) as any)
+  const out = await jevIntake({ role, freshTitle: title, freshBody: body.slice(0, 1500) }, cands, jevEndpointFromEnv(), fetch).catch((e) => ({ __error: String(e && (e as Error).message || e) }) as any)
   void n
   if (!out || (out as any).__error) return { route: `skip(${(out as any)?.__error ?? 'no-key'})`, dup: null as number | null, ms: Date.now() - t0, cost: 0, s: null as any, det: "" }
   const r = out.repo_fit < 0.5 ? "reject" : out.duplicate != null && out.duplicate >= 0.9 ? "dup-close" : out.duplicate != null && out.duplicate >= 0.7 ? "dup-review" : out.is_clear < 0.5 ? "needs-info" : out.size >= 0.5 ? "split" : "ready";

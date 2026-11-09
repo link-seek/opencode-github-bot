@@ -5,7 +5,9 @@
  */
 
 // All score thresholds are 0-1 NORMALIZED (raw score / top level number).
-// Calibrated 2026-11-08 on issues #1,2,3,5,7,8,13 (jev-1.13-free), recheck after any model/criteria change.
+// Calibrated 2026-11-08 on issues #1,2,3,5,7,8,13 (jev-1.13 via OpenCode gateway;
+// originally jev-1.13-free). Recheck after any model/criteria change: thresholds live
+// in this file, model lives in JEV_MODEL (org var) / DEFAULT_JEV_MODEL (scripts/jev.ts).
 export const THRESH = {
   repoReject: 0.5, // repo_fit (noul) below -> out of scope
   repoReview: 0.9, // repo_fit in [0.5, 0.9) -> human

@@ -2,8 +2,10 @@ import { describe, expect, test } from "bun:test"
 import {
   buildJevQuestions,
   buildJevState,
+  DEFAULT_JEV_MODEL,
+  DEFAULT_JEV_URL,
+  jevEndpointFromEnv,
   jevIntake,
-  JEV_MODEL,
   normalizeScore,
   SCORE_LEVELS,
 } from "../scripts/jev"
@@ -21,8 +23,9 @@ describe("normalizeScore", () => {
 })
 
 describe("jev contract (docs-aligned)", () => {
-  test("model pinned, 5 base questions", () => {
-    expect(JEV_MODEL).toBe("jev-1.13.0")
+  test("defaults pinned: single opencode path", () => {
+    expect(DEFAULT_JEV_MODEL).toBe("jev-1.13")
+    expect(DEFAULT_JEV_URL).toContain("opencode.ai")
     const q = buildJevQuestions("duty", [])
     expect(Object.keys(q).sort()).toEqual(
       ["is_clear", "priority", "repo_fit", "size", "type"].sort(),
@@ -74,7 +77,7 @@ describe("jevIntake parsing", () => {
     const out = await jevIntake(
       { role: "d", freshTitle: "t", freshBody: "b" },
       [{ number: 7, title: "t7", summary: "s7" }, { number: 9, title: "t9", summary: "s9" }],
-      { url: "https://x", key: "k" },
+      { url: "https://x", key: "k", model: "m" },
       fakeFetch,
     )
     expect(out!.is_clear).toBeCloseTo(1.6 / 2, 5)
@@ -87,13 +90,67 @@ describe("jevIntake parsing", () => {
     const out = await jevIntake(
       { role: "d", freshTitle: "t", freshBody: "b" },
       [],
-      { url: "https://x", key: "k" },
+      { url: "https://x", key: "k", model: "m" },
       fakeFetch,
     )
     expect(out!.duplicate).toBeNull()
     expect(out!.duplicateOf).toEqual([])
   })
-  test("null endpoint -> null (skip)", async () => {
-    expect(await jevIntake({ role: "d", freshTitle: "t", freshBody: "b" }, [], null)).toBeNull()
+  test("null stays null even with ambient keys (fail-closed, no env fallback)", async () => {
+    const prev = process.env.OPENCODE_API_KEY
+    process.env.OPENCODE_API_KEY = "ambient-should-not-leak"
+    try {
+      expect(await jevIntake({ role: "d", freshTitle: "t", freshBody: "b" }, [], null)).toBeNull()
+    } finally {
+      if (prev === undefined) delete process.env.OPENCODE_API_KEY
+      else process.env.OPENCODE_API_KEY = prev
+    }
+  })
+})
+
+describe("jevEndpointFromEnv (single path, env-parametrized)", () => {
+  test("defaults to opencode gateway on legacy OPENCODE_API_KEY", () => {
+    const ep = jevEndpointFromEnv({ OPENCODE_API_KEY: "k" } as any)
+    expect(ep).toEqual({ url: DEFAULT_JEV_URL, key: "k", model: DEFAULT_JEV_MODEL })
+  })
+  test("JEV_* overrides all (direct TypeSafe example)", () => {
+    const ep = jevEndpointFromEnv({
+      JEV_URL: "https://api.typesafe.ai/v1/systemone",
+      JEV_MODEL: "jev-1.13.0",
+      JEV_API_KEY: "ts",
+      OPENCODE_API_KEY: "ignored",
+    } as any)
+    expect(ep).toEqual({
+      url: "https://api.typesafe.ai/v1/systemone",
+      key: "ts",
+      model: "jev-1.13.0",
+    })
+  })
+  test("legacy TS_API_KEY still works (compat)", () => {
+    const ep = jevEndpointFromEnv({ TS_API_KEY: "t" } as any)
+    expect(ep!.key).toBe("t")
+    expect(ep!.url).toBe(DEFAULT_JEV_URL)
+  })
+  test("no key -> null (fail-closed to human)", () => {
+    expect(jevEndpointFromEnv({} as any)).toBeNull()
+  })
+  test("empty strings fall through (Actions renders unset as '')", () => {
+    const ep = jevEndpointFromEnv({ JEV_API_KEY: "", OPENCODE_API_KEY: "k" } as any)
+    expect(ep!.key).toBe("k")
+    expect(jevEndpointFromEnv({ JEV_API_KEY: "", LLM_API_KEY: "l" } as any)!.key).toBe("l")
+  })
+  test("request body carries env model", async () => {
+    let body: any = null
+    const fakeFetch = (async (_u: any, init: any) => {
+      body = JSON.parse(init.body)
+      return { ok: true, json: async () => ({ model: "m", answers: {} }) }
+    }) as unknown as typeof fetch
+    await jevIntake(
+      { role: "d", freshTitle: "t", freshBody: "b" },
+      [],
+      { url: "https://example.invalid/x", key: "k", model: "jev-pin-test" },
+      fakeFetch,
+    )
+    expect(body.model).toBe("jev-pin-test")
   })
 })

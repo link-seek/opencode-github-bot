@@ -4,14 +4,13 @@
  *  - scores are NORMALIZED to 0-1 (raw score / top level number) before routing;
  *  - score confidences gate automation (low confidence -> human);
  *  - duplicates use one Noul per candidate (same_as_<n>), giving attribution.
- * Endpoint: OpenCode systemone gateway (OPENCODE_API_KEY) by default,
- * fallback direct TypeSafe (TS_API_KEY). Model pinned, never alias.
+ * Single endpoint path, fully env-parametrized (#9 follow-up):
+ *  - JEV_URL / JEV_MODEL / JEV_API_KEY (key also accepts OPENCODE_API_KEY,
+ *    TS_API_KEY, TYPESAFE_API_KEY for compat). Defaults = OpenCode gateway.
+ *  - No key -> null (caller skips semantic triage, fail-closed to human).
  */
-
-export const JEV_MODEL = "jev-1.13.0"
-export const JEV_MODEL_OPENCODE = "jev-1.13-free"
-export const JEV_OPENCODE_URL = "https://opencode.ai/inference/systemone/v1/systemone"
-export const JEV_DIRECT_URL = "https://api.typesafe.ai/v1/systemone"
+export const DEFAULT_JEV_URL = "https://opencode.ai/inference/systemone/v1/systemone"
+export const DEFAULT_JEV_MODEL = "jev-1.13"
 
 export interface CandidateDoc {
   number: number
@@ -108,13 +107,19 @@ export const SCORE_LEVELS = { is_clear: 3, size: 4, priority: 4 } as const
 export interface JevEndpoint {
   url: string
   key: string
+  model?: string
 }
 
 export function jevEndpointFromEnv(env: NodeJS.ProcessEnv = process.env): JevEndpoint | null {
-  if (env.OPENCODE_API_KEY) return { url: JEV_OPENCODE_URL, key: env.OPENCODE_API_KEY }
-  const ts = env.TS_API_KEY ?? env.TYPESAFE_API_KEY
-  if (ts) return { url: JEV_DIRECT_URL, key: ts }
-  return null
+  // NOTE: use || not ??: GitHub Actions renders unset vars as "" which must fall through.
+  // LLM_API_KEY_FALLBACK carries callers' env.LLM_API_KEY (inputs.llm-api-key arrives as LLM_API_KEY).
+  const key = env.JEV_API_KEY || env.LLM_API_KEY || env.LLM_API_KEY_FALLBACK || env.OPENCODE_API_KEY || env.TS_API_KEY || env.TYPESAFE_API_KEY || ""
+  if (!key) return null
+  return {
+    url: env.JEV_URL || DEFAULT_JEV_URL,
+    key,
+    model: env.JEV_MODEL || DEFAULT_JEV_MODEL,
+  }
 }
 
 function num(v: any, fb = 0): number {
@@ -126,16 +131,16 @@ function num(v: any, fb = 0): number {
 export async function jevIntake(
   state: IntakeState,
   candidates: CandidateDoc[],
-  ep: JevEndpoint | null = jevEndpointFromEnv(),
+  ep?: JevEndpoint | null,
   fetchFn: typeof fetch = fetch,
 ): Promise<JevScores | null> {
-  if (!ep) return null
-  const model = ep.url.includes("opencode.ai") ? JEV_MODEL_OPENCODE : JEV_MODEL
-  const res = await fetchFn(ep.url, {
+  const endpoint = ep === undefined ? jevEndpointFromEnv() : ep
+  if (!endpoint) return null
+  const res = await fetchFn(endpoint.url, {
     method: "POST",
-    headers: { Authorization: `Bearer ${ep.key}`, "Content-Type": "application/json" },
+    headers: { Authorization: `Bearer ${endpoint.key}`, "Content-Type": "application/json" },
     body: JSON.stringify({
-      model,
+      model: endpoint.model || DEFAULT_JEV_MODEL,
       state: buildJevState(state),
       questions: buildJevQuestions(state.role, candidates),
     }),
@@ -144,7 +149,9 @@ export async function jevIntake(
     const t = await res.text().catch(() => "")
     throw new Error(`jev: ${res.status} ${t.slice(0, 300)}`)
   }
-  const data = (await res.json()) as any
+  const data = await res.json().catch(() => {
+    throw new Error("jev: non-JSON 2xx response")
+  }) as any
   const a = data?.answers ?? {}
   const typeAns = a?.type ?? {}
   const dupOf: number[] = []
@@ -171,6 +178,6 @@ export async function jevIntake(
       size: num(a?.size?.confidence, 0),
       priority: num(a?.priority?.confidence, 0),
     },
-    model: data?.model ?? JEV_MODEL,
+    model: data?.model || endpoint.model || DEFAULT_JEV_MODEL,
   }
 }

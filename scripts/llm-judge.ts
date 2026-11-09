@@ -42,9 +42,10 @@ export async function llmJudge(
   fetchFn: typeof fetch = fetch,
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<JudgeScores> {
-  const baseUrl = env.LLM_BASE_URL ?? "https://opencode.ai/inference/openai/v1";
-  const key = env.LLM_API_KEY ?? env.OPENCODE_API_KEY ?? "";
-  const model = env.LLM_JUDGE_MODEL ?? "glm-5.3-flash-free"; // free tier: no funds needed
+  const baseUrl = env.LLM_BASE_URL || "https://opencode.ai/inference/openai/v1";
+  const key = env.LLM_API_KEY || env.LLM_API_KEY_FALLBACK || env.OPENCODE_API_KEY || "";
+  const model = env.LLM_JUDGE_MODEL || env.OPENCODE_MODEL || "";
+  if (!model) throw new Error("need LLM_JUDGE_MODEL or OPENCODE_MODEL");
   if (!key) throw new Error("need LLM_API_KEY or OPENCODE_API_KEY");
   const state = [`NEW: ${title}\n${body.slice(0, 1500)}`,
     ...candidates.slice(0, 10).map((c) => `#${c.number}: ${c.title} — ${c.summary}`)].join("\n");
@@ -61,11 +62,19 @@ export async function llmJudge(
     }),
   });
   if (!res.ok) throw new Error(`llm-judge: ${res.status} ${(await res.text().catch(() => "")).slice(0, 500)}`);
-  const data = (await res.json()) as any;
+  const data = await res.json().catch(() => {
+    throw new Error("llm-judge: non-JSON 2xx response");
+  }) as any;
   const text: string = data?.choices?.[0]?.message?.content ?? "{}";
   const start = text.indexOf("{");
   const end = text.lastIndexOf("}");
-  const j = JSON.parse(text.slice(start, end + 1)) as any;
+  if (start < 0 || end < 0 || end < start) throw new Error(`llm-judge: no JSON object in response: ${text.slice(0, 200)}`);
+  let j: any;
+  try {
+    j = JSON.parse(text.slice(start, end + 1)) as any;
+  } catch (e) {
+    throw new Error(`llm-judge: malformed JSON: ${text.slice(0, 200)}`);
+  }
   const type = typeof j.type === "string" && ["bug", "feature", "docs"].includes(j.type) ? j.type : "bug";
   return {
     repo_fit: clamp01(j.repo_fit),

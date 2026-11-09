@@ -233,6 +233,11 @@ runs:
         GITHUB_REPOSITORY: ${{ github.repository }}
         ISSUE_NUMBER: ${{ inputs.issue-number }}
         RECALL_MODE: ${{ inputs.recall-mode }}
+        JEV_URL: ${{ env.JEV_URL }}
+        JEV_MODEL: ${{ env.JEV_MODEL }}
+        JEV_API_KEY: ${{ env.JEV_API_KEY }}
+        LLM_API_KEY: ${{ inputs.llm-api-key }}
+        LLM_API_KEY_FALLBACK: ${{ env.LLM_API_KEY }}
         OPENCODE_API_KEY: ${{ env.OPENCODE_API_KEY }}
         TS_API_KEY: ${{ env.TS_API_KEY }}
         CF_PARENT_TOKEN: ${{ env.CF_PARENT_TOKEN }}
