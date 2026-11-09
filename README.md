@@ -58,13 +58,10 @@ Registers tools: `gh-pr-comment`, `gh-pr-review`, `finish-review`, `finish-fix`.
     issue-number: ${{ github.event.issue.number }}
     recall-mode: keyword # off | keyword | cf | custom
   env:
-    OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }} # Jev via OpenCode gateway (default)
-    JEV_URL: ${{ vars.JEV_URL }} # optional override, default = opencode systemone
-    JEV_MODEL: ${{ vars.JEV_MODEL }} # optional override, default jev-1.13
-    # Override to direct TypeSafe instead:
-    # JEV_URL: https://api.typesafe.ai/v1/systemone
-    # JEV_MODEL: jev-1.13.0
-    # JEV_API_KEY: ${{ secrets.TS_API_KEY }}
+    OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }} # Jev key (gateway default)
+    TS_API_KEY: ${{ secrets.TS_API_KEY }} # Jev key for typesafe/ direct route
+    JEV_MODEL: ${{ vars.JEV_MODEL }} # jev-1.13 (gateway) or opencode/jev-1.13;
+      # typesafe/jev-1.13.0 switches to direct TypeSafe API
 ```
 
 Requires `.github/repo-role.yml` (what this repo owns, natural language). See [#9](https://github.com/link-seek/opencode-github-bot/issues/9) for routing rules and thresholds.

@@ -43,7 +43,7 @@ export async function llmJudge(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<JudgeScores> {
   const baseUrl = env.LLM_BASE_URL || "https://opencode.ai/inference/openai/v1";
-  const key = env.LLM_API_KEY || env.LLM_API_KEY_FALLBACK || env.OPENCODE_API_KEY || "";
+  const key = env.LLM_API_KEY || env.OPENCODE_API_KEY || "";
   const model = env.LLM_JUDGE_MODEL || env.OPENCODE_MODEL || "";
   if (!model) throw new Error("need LLM_JUDGE_MODEL or OPENCODE_MODEL");
   if (!key) throw new Error("need LLM_API_KEY or OPENCODE_API_KEY");
@@ -53,7 +53,11 @@ export async function llmJudge(
   const t0 = Date.now();
   const res = await fetchFn(`${baseUrl}/chat/completions`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+    headers: {
+      Authorization: `Bearer ${key}`,
+      "Content-Type": "application/json",
+      "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36",
+    },
     body: JSON.stringify({
       model,
       messages: [{ role: "user", content: prompt }],
