@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       jev-model:
-        description: "JEV_MODEL value: bare/opencode/ id -> gateway, typesafe/ id -> direct (default: free baseline)"
+        description: "JEV_MODEL value: bare/opencode/ id -> gateway, zen/ id -> Zen (default: free baseline)"
         required: false
         default: "jev-1.13-free"
 
@@ -17,26 +17,30 @@ jobs:
         env:
           JEV_MODEL_INPUT: ${{ inputs.jev-model }}
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
-          TS_API_KEY: ${{ secrets.TS_API_KEY }}
         run: |
           set -euo pipefail
           MODEL="${JEV_MODEL_INPUT:?need jev-model input}"
           case "$MODEL" in
-            typesafe/*)
-              JEV_URL="https://api.typesafe.ai/v1/systemone"
-              MODEL_ID="${MODEL#typesafe/}"
-              KEY="${TS_API_KEY:?need secrets.TS_API_KEY for direct probe}"
+            zen/*)
+              JEV_URL="https://opencode.ai/zen/v1/systemone"
+              MODEL_ID="${MODEL#zen/}"
+              case "$MODEL_ID" in
+                "" | */*) echo "reject: bad zen model id: $MODEL" >&2; exit 1 ;;
+              esac
+              KEY="${OPENCODE_API_KEY:-}"
+              : "${KEY:?need secrets.OPENCODE_API_KEY for Zen probe (free needs key too)}"
               ;;
             opencode/*)
               JEV_URL="https://opencode.ai/inference/systemone/v1/systemone"
               MODEL_ID="${MODEL#opencode/}"
+              case "$MODEL_ID" in
+                "" | */*) echo "reject: bad opencode model id: $MODEL" >&2; exit 1 ;;
+              esac
               KEY="${OPENCODE_API_KEY:?need secrets.OPENCODE_API_KEY for gateway probe}"
               ;;
-            zen/*)
-              JEV_URL="https://opencode.ai/zen/v1/systemone"
-              MODEL_ID="${MODEL#zen/}"
-              KEY="${OPENCODE_API_KEY:-}"
-              : "${KEY:?need secrets.OPENCODE_API_KEY for Zen probe (free needs key too)}"
+            */*)
+              echo "reject: unknown model prefix: $MODEL (use bare, opencode/ or zen/)" >&2
+              exit 1
               ;;
             *)
               JEV_URL="https://opencode.ai/inference/systemone/v1/systemone"
