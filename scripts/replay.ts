@@ -25,8 +25,23 @@ const role = "opencode-github-bot: action wiring, plugin tools, prompts, docs; r
 
 async function issueText(n: number) {
   const issue = (await gh(`/repos/${repo}/issues/${n}`)) as any
+  if (STRIP) return { title: stripVocab(String(issue.title ?? "")), body: stripVocab(String(issue.body ?? "")) };
   return { title: String(issue.title ?? ""), body: String(issue.body ?? "") }
 }
+
+const STRIP_TOKENS = [
+  "needs-split", "needs-info", "needs-review", "duplicate", "triage", "intake",
+  "pm-", "pm ", "route", "routing", "threshold", "验收标准", "拆分", "分诊",
+  "分流", "路由", "阈值", "子 issue", "子issue",
+];
+
+function stripVocab(t: string): string {
+  let out = ` ${t} `;
+  for (const w of STRIP_TOKENS) out = out.split(w).join(" ");
+  return out.replace(/\s+/g, " ").trim();
+}
+
+const STRIP = process.env.REPLAY_STRIP_VOCAB === "1";
 
 async function runKeyword(n: number, title: string, body: string) {
   const t0 = Date.now()
@@ -43,13 +58,20 @@ async function runKeyword(n: number, title: string, body: string) {
 
 async function runJev(n: number, title: string, body: string) {
   const t0 = Date.now()
-  const out = await jevIntake({ role, freshTitle: title, freshBody: body.slice(0, 1500) }, [], undefined, fetch).catch((e) => ({ __error: String(e && (e as Error).message || e) }) as any)
+  let cands: Array<{ number: number; title: string; summary: string }> = [];
+  try {
+    const found = await searchTopCandidates(repo, recallQuery(title, body), 30, fetch, token);
+    const docs = found.map((c) => ({ number: c.number, title: c.title, body: c.summary }));
+    const kwTop = keywordRecallTopK({ number: n, title, body }, docs.filter((d) => d.number !== n), 10);
+    const byNum = new Map(docs.map((d) => [d.number, d]));
+    cands = kwTop.map((h) => ({ number: h.number, title: byNum.get(h.number)?.title ?? `#${h.number}`, summary: (byNum.get(h.number)?.body ?? "").slice(0, 300) }));
+  } catch { /* no candidates -> duplicate unknown */ }
+  const out = await jevIntake({ role, freshTitle: title, freshBody: body.slice(0, 1500) }, cands, undefined, fetch).catch((e) => ({ __error: String(e && (e as Error).message || e) }) as any)
   void n
-  if (!out || (out as any).__error) return { route: `skip(${(out as any)?.__error ?? 'no-key'})`, dup: null as number | null, ms: Date.now() - t0, cost: 0, s: null as any }
-  return {
-    route: out.repo_fit < 0.5 ? "reject" : out.duplicate != null && out.duplicate >= 0.9 ? "dup-close" : out.duplicate != null && out.duplicate >= 0.7 ? "dup-review" : out.is_clear < 0.5 ? "needs-info" : out.size >= 0.5 ? "split" : "ready",
-    dup: out.duplicate, ms: Date.now() - t0, cost: 0, s: out,
-  }
+  if (!out || (out as any).__error) return { route: `skip(${(out as any)?.__error ?? 'no-key'})`, dup: null as number | null, ms: Date.now() - t0, cost: 0, s: null as any, det: "" }
+  const r = out.repo_fit < 0.5 ? "reject" : out.duplicate != null && out.duplicate >= 0.9 ? "dup-close" : out.duplicate != null && out.duplicate >= 0.7 ? "dup-review" : out.is_clear < 0.5 ? "needs-info" : out.size >= 0.5 ? "split" : "ready";
+  const det = `fit=${out.repo_fit.toFixed(2)} clear=${out.is_clear.toFixed(2)} type=${out.type}(${out.typeConfidence.toFixed(2)}) size=${out.size.toFixed(2)} dup=${out.duplicate == null ? "n/a" : `${out.duplicate.toFixed(2)}->[${out.duplicateOf.join(",")}]`} conf=${[out.confidences.is_clear, out.confidences.size, out.confidences.priority].map((c) => c.toFixed(2)).join("/")}`;
+  return { route: r, dup: out.duplicate, ms: Date.now() - t0, cost: 0, s: out, det }
 }
 
 async function runLlm(n: number, title: string, body: string) {
@@ -81,7 +103,7 @@ for (const n of nums) {
   const cells: string[] = []
   for (const p of policies) {
     const r = p === "keyword" ? await runKeyword(n, title, body) : p === "jev" ? await runJev(n, title, body) : await runLlm(n, title, body)
-    cells.push(`${r.route} (${r.ms}ms${r.cost ? `, ${r.cost}tok` : ""})`)
+    cells.push(`${r.route} (${r.ms}ms${r.cost ? `, ${r.cost}tok` : ""})${(r as any).det ? ` :: ${(r as any).det}` : ""}`)
   }
   console.log(`| #${n} ${title.slice(0, 40)} | ${cells.join(" | ")} |`)
 }
