@@ -236,7 +236,6 @@ runs:
         JEV_MODEL: ${{ env.JEV_MODEL }}
         LLM_API_KEY: ${{ inputs.llm-api-key }}
         OPENCODE_API_KEY: ${{ env.OPENCODE_API_KEY }}
-        TS_API_KEY: ${{ env.TS_API_KEY }}
         CF_PARENT_TOKEN: ${{ env.CF_PARENT_TOKEN }}
         VECTORIZE_INDEX: ${{ env.VECTORIZE_INDEX }}
       run: |

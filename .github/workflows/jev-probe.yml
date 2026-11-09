@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       jev-model:
-        description: "JEV_MODEL value: bare/opencode/ id -> gateway, typesafe/ id -> direct (default: free baseline)"
+        description: "JEV_MODEL value: bare/opencode/ id -> gateway, zen/ id -> Zen (default: free baseline)"
         required: false
         default: "jev-1.13-free"
 
@@ -17,16 +17,10 @@ jobs:
         env:
           JEV_MODEL_INPUT: ${{ inputs.jev-model }}
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
-          TS_API_KEY: ${{ secrets.TS_API_KEY }}
         run: |
           set -euo pipefail
           MODEL="${JEV_MODEL_INPUT:?need jev-model input}"
           case "$MODEL" in
-            typesafe/*)
-              JEV_URL="https://api.typesafe.ai/v1/systemone"
-              MODEL_ID="${MODEL#typesafe/}"
-              KEY="${TS_API_KEY:?need secrets.TS_API_KEY for direct probe}"
-              ;;
             opencode/*)
               JEV_URL="https://opencode.ai/inference/systemone/v1/systemone"
               MODEL_ID="${MODEL#opencode/}"

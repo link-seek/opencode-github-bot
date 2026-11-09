@@ -4,20 +4,16 @@
  *  - scores are NORMALIZED to 0-1 (raw score / top level number) before routing;
  *  - score confidences gate automation (low confidence -> human);
  *  - duplicates use one Noul per candidate (same_as_<n>), giving attribution.
- * Single model variable (#9 follow-up): JEV_MODEL drives both endpoint and
- * model id by provider prefix, same convention as OPENCODE_MODEL
- * (opencode-go/beam-free works for both CLI and API):
- *  - "opencode/jev-1.13-free" or bare "jev-1.13-free" -> OpenCode systemone gateway
- *  - "zen/jev-1.13-free" -> OpenCode Zen endpoint (same models, keyless free tier)
- *  - "typesafe/jev-1.13.0" -> direct TypeSafe API
- * Key comes from existing secrets (OPENCODE_API_KEY, else TS_API_KEY);
- * inputs.llm-api-key arrives as LLM_API_KEY. No key -> null (fail-closed).
+ * Single model variable: JEV_MODEL drives both endpoint and model id by
+ * provider prefix, same convention as OPENCODE_MODEL:
+ *  - "opencode/jev-1.13-free" or bare "jev-1.13-free" -> OpenCode gateway
+ *  - "zen/jev-1.13-free" -> OpenCode Zen endpoint (same host family)
+ * Opencode only — no direct TypeSafe path. Key: OPENCODE_API_KEY (secret),
+ * inputs.llm-api-key arrives as LLM_API_KEY fallback. No key -> null (fail-closed).
  */
 export const DEFAULT_JEV_MODEL = "jev-1.13-free"
-export const DIRECT_DEFAULT_JEV_MODEL = "jev-1.13.0"
 export const OPENCODE_JEV_URL = "https://opencode.ai/inference/systemone/v1/systemone"
 export const ZEN_JEV_URL = "https://opencode.ai/zen/v1/systemone"
-export const DIRECT_JEV_URL = "https://api.typesafe.ai/v1/systemone"
 
 export interface CandidateDoc {
   number: number
@@ -117,29 +113,26 @@ export interface JevEndpoint {
   model?: string
 }
 
-export function resolveJevTarget(raw: string): { url: string; model: string } {
+export function resolveJevTarget(raw: string): { url: string; model: string } | null {
   const m = (raw || "").trim()
-  if (m.startsWith("typesafe/")) {
-    const id = m.slice("typesafe/".length).trim()
-    return { url: DIRECT_JEV_URL, model: id || DIRECT_DEFAULT_JEV_MODEL }
-  }
   if (m.startsWith("zen/")) {
     const id = m.slice("zen/".length).trim()
     return { url: ZEN_JEV_URL, model: id || DEFAULT_JEV_MODEL }
   }
   const bare = m.startsWith("opencode/") ? m.slice("opencode/".length).trim() : m
+  // Unknown provider prefix (e.g. a typo like "typesafe/..."): fail closed
+  // instead of sending a garbage model id to the gateway.
+  if (bare.includes("/")) return null
   return { url: OPENCODE_JEV_URL, model: bare || DEFAULT_JEV_MODEL }
 }
 
 export function jevEndpointFromEnv(env: NodeJS.ProcessEnv = process.env): JevEndpoint | null {
-  // Key follows the resolved route: gateway routes take the OpenCode key,
-  // direct routes take the TypeSafe key. Never cross-send (would 401).
   // Dedicated secret first: inputs.llm-api-key may carry a non-OpenCode key
   // meant for the agent chat model, which must not override the Jev key.
-  const { url, model } = resolveJevTarget(env.JEV_MODEL || "")
-  const key = url === DIRECT_JEV_URL
-    ? env.TS_API_KEY || env.TYPESAFE_API_KEY || ""
-    : env.OPENCODE_API_KEY || env.LLM_API_KEY || ""
+  const t = resolveJevTarget(env.JEV_MODEL || "")
+  if (!t) return null
+  const { url, model } = t
+  const key = env.OPENCODE_API_KEY || env.LLM_API_KEY || ""
   if (!key) return null
   return { url, key, model }
 }
@@ -158,8 +151,8 @@ export async function jevIntake(
 ): Promise<JevScores | null> {
   const endpoint = ep === undefined ? jevEndpointFromEnv() : ep
   if (!endpoint) return null
-  // Route-aware model default: a model-less direct endpoint must not get the gateway model id.
-  const model = endpoint.model || (endpoint.url === DIRECT_JEV_URL ? DIRECT_DEFAULT_JEV_MODEL : DEFAULT_JEV_MODEL)
+  // Model default matches the resolved (opencode-family) endpoint.
+  const model = endpoint.model || DEFAULT_JEV_MODEL
   // opencode.ai sits behind Cloudflare, which bans default script UAs (403/1010).
   // Send a browser-grade UA like the verified probe does.
   const res = await fetchFn(endpoint.url, {
