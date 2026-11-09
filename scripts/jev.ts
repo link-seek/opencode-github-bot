@@ -158,6 +158,8 @@ export async function jevIntake(
 ): Promise<JevScores | null> {
   const endpoint = ep === undefined ? jevEndpointFromEnv() : ep
   if (!endpoint) return null
+  // Route-aware model default: a model-less direct endpoint must not get the gateway model id.
+  const model = endpoint.model || (endpoint.url === DIRECT_JEV_URL ? DIRECT_DEFAULT_JEV_MODEL : DEFAULT_JEV_MODEL)
   // opencode.ai sits behind Cloudflare, which bans default script UAs (403/1010).
   // Send a browser-grade UA like the verified probe does.
   const res = await fetchFn(endpoint.url, {
@@ -168,7 +170,7 @@ export async function jevIntake(
       "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36",
     },
     body: JSON.stringify({
-      model: endpoint.model || DEFAULT_JEV_MODEL,
+      model,
       state: buildJevState(state),
       questions: buildJevQuestions(state.role, candidates),
     }),
@@ -206,6 +208,6 @@ export async function jevIntake(
       size: num(a?.size?.confidence, 0),
       priority: num(a?.priority?.confidence, 0),
     },
-    model: data?.model || endpoint.model || DEFAULT_JEV_MODEL,
+    model: data?.model || model,
   }
 }
