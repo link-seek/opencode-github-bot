@@ -10,6 +10,7 @@ import {
   OPENCODE_JEV_URL,
   resolveJevTarget,
   SCORE_LEVELS,
+  ZEN_JEV_URL,
 } from "../scripts/jev"
 
 describe("normalizeScore", () => {
@@ -122,6 +123,10 @@ describe("jevEndpointFromEnv (JEV_MODEL drives endpoint+model)", () => {
   test("typesafe/ prefix -> direct API with TypeSafe key only", () => {
     const ep = jevEndpointFromEnv({ JEV_MODEL: "typesafe/jev-1.13.0", TS_API_KEY: "ts" } as any)
     expect(ep).toEqual({ url: DIRECT_JEV_URL, key: "ts", model: "jev-1.13.0" })
+  })
+  test("zen/ prefix -> Zen endpoint", () => {
+    const ep = jevEndpointFromEnv({ JEV_MODEL: "zen/jev-1.13-free", OPENCODE_API_KEY: "k" } as any)
+    expect(ep).toEqual({ url: ZEN_JEV_URL, key: "k", model: "jev-1.13-free" })
   })
   test("keys never cross routes", () => {
     expect(jevEndpointFromEnv({ JEV_MODEL: "typesafe/jev-1.13.0", OPENCODE_API_KEY: "k" } as any)).toBeNull()

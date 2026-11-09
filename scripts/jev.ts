@@ -7,13 +7,15 @@
  * Single model variable (#9 follow-up): JEV_MODEL drives both endpoint and
  * model id by provider prefix, same convention as OPENCODE_MODEL
  * (opencode-go/beam-free works for both CLI and API):
- *  - "opencode/jev-1.13" or bare "jev-1.13" -> OpenCode systemone gateway
+ *  - "opencode/jev-1.13-free" or bare "jev-1.13-free" -> OpenCode systemone gateway
+ *  - "zen/jev-1.13-free" -> OpenCode Zen endpoint (same models, keyless free tier)
  *  - "typesafe/jev-1.13.0" -> direct TypeSafe API
  * Key comes from existing secrets (OPENCODE_API_KEY, else TS_API_KEY);
  * inputs.llm-api-key arrives as LLM_API_KEY. No key -> null (fail-closed).
  */
 export const DEFAULT_JEV_MODEL = "jev-1.13-free"
 export const OPENCODE_JEV_URL = "https://opencode.ai/inference/systemone/v1/systemone"
+export const ZEN_JEV_URL = "https://opencode.ai/zen/v1/systemone"
 export const DIRECT_JEV_URL = "https://api.typesafe.ai/v1/systemone"
 
 export interface CandidateDoc {
@@ -120,6 +122,10 @@ export function resolveJevTarget(raw: string): { url: string; model: string } {
     const id = m.slice("typesafe/".length).trim()
     return { url: DIRECT_JEV_URL, model: id || DEFAULT_JEV_MODEL }
   }
+  if (m.startsWith("zen/")) {
+    const id = m.slice("zen/".length).trim()
+    return { url: ZEN_JEV_URL, model: id || DEFAULT_JEV_MODEL }
+  }
   const bare = m.startsWith("opencode/") ? m.slice("opencode/".length).trim() : m
   return { url: OPENCODE_JEV_URL, model: bare || DEFAULT_JEV_MODEL }
 }
@@ -127,10 +133,12 @@ export function resolveJevTarget(raw: string): { url: string; model: string } {
 export function jevEndpointFromEnv(env: NodeJS.ProcessEnv = process.env): JevEndpoint | null {
   // Key follows the resolved route: gateway routes take the OpenCode key,
   // direct routes take the TypeSafe key. Never cross-send (would 401).
+  // Dedicated secret first: inputs.llm-api-key may carry a non-OpenCode key
+  // meant for the agent chat model, which must not override the Jev key.
   const { url, model } = resolveJevTarget(env.JEV_MODEL || "")
   const key = url === DIRECT_JEV_URL
     ? env.TS_API_KEY || env.TYPESAFE_API_KEY || ""
-    : env.LLM_API_KEY || env.OPENCODE_API_KEY || ""
+    : env.OPENCODE_API_KEY || env.LLM_API_KEY || ""
   if (!key) return null
   return { url, key, model }
 }
