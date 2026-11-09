@@ -14,6 +14,7 @@
  * inputs.llm-api-key arrives as LLM_API_KEY. No key -> null (fail-closed).
  */
 export const DEFAULT_JEV_MODEL = "jev-1.13-free"
+export const DIRECT_DEFAULT_JEV_MODEL = "jev-1.13.0"
 export const OPENCODE_JEV_URL = "https://opencode.ai/inference/systemone/v1/systemone"
 export const ZEN_JEV_URL = "https://opencode.ai/zen/v1/systemone"
 export const DIRECT_JEV_URL = "https://api.typesafe.ai/v1/systemone"
@@ -120,7 +121,7 @@ export function resolveJevTarget(raw: string): { url: string; model: string } {
   const m = (raw || "").trim()
   if (m.startsWith("typesafe/")) {
     const id = m.slice("typesafe/".length).trim()
-    return { url: DIRECT_JEV_URL, model: id || DEFAULT_JEV_MODEL }
+    return { url: DIRECT_JEV_URL, model: id || DIRECT_DEFAULT_JEV_MODEL }
   }
   if (m.startsWith("zen/")) {
     const id = m.slice("zen/".length).trim()
