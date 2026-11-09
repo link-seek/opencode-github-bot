@@ -1,8 +1,8 @@
 /**
  * Calibration replay (#9 paper eval): same issues through 3 policies.
  * Usage: bun scripts/replay.ts [--policy keyword|jev|llm|all] [--issues 1,2,3]
- * Env: GITHUB_TOKEN, GITHUB_REPOSITORY, REPLAY_ISSUES, OPENCODE_API_KEY/TS_API_KEY,
- *   LLM_BASE_URL, LLM_API_KEY, LLM_JUDGE_MODEL.
+ * Env: GITHUB_TOKEN, GITHUB_REPOSITORY, REPLAY_ISSUES, JEV_URL/JEV_MODEL/JEV_API_KEY
+ *   (compat: OPENCODE_API_KEY/TS_API_KEY), LLM_BASE_URL, LLM_API_KEY, LLM_JUDGE_MODEL.
  * Read-only except optional LLM spend (pennies). Prints markdown table to stdout.
  */
 import { jevIntake, jevEndpointFromEnv, normalizeScore, SCORE_LEVELS } from "./jev"
