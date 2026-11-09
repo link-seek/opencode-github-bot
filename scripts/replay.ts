@@ -25,8 +25,23 @@ const role = "opencode-github-bot: action wiring, plugin tools, prompts, docs; r
 
 async function issueText(n: number) {
   const issue = (await gh(`/repos/${repo}/issues/${n}`)) as any
+  if (STRIP) return { title: stripVocab(String(issue.title ?? "")), body: stripVocab(String(issue.body ?? "")) };
   return { title: String(issue.title ?? ""), body: String(issue.body ?? "") }
 }
+
+const STRIP_TOKENS = [
+  "needs-split", "needs-info", "needs-review", "duplicate", "triage", "intake",
+  "pm-", "pm ", "route", "routing", "threshold", "验收标准", "拆分", "分诊",
+  "分流", "路由", "阈值", "子 issue", "子issue",
+];
+
+function stripVocab(t: string): string {
+  let out = ` ${t} `;
+  for (const w of STRIP_TOKENS) out = out.split(w).join(" ");
+  return out.replace(/\s+/g, " ").trim();
+}
+
+const STRIP = process.env.REPLAY_STRIP_VOCAB === "1";
 
 async function runKeyword(n: number, title: string, body: string) {
   const t0 = Date.now()
