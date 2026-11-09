@@ -1,8 +1,11 @@
 /**
  * LLM-judge baseline for paper eval (#9): one chat call, same 6 outputs as Jev.
- * Talked to via any OpenAI-compatible endpoint (env LLM_BASE_URL +
- * LLM_API_KEY, default OpenCode gateway). Only used by replay/eval, never in prod path.
+ * Talked to via any OpenAI-compatible endpoint. Model comes from ONE variable
+ * (LLM_JUDGE_MODEL else OPENCODE_MODEL) in CLI form "provider/id"; API calls
+ * split it via model-target.ts (bare id + provider base URL).
+ * Only used by replay/eval, never in prod path.
  */
+import { apiTargetFor } from "./model-target"
 
 export interface JudgeScores {
   repo_fit: number
@@ -42,10 +45,14 @@ export async function llmJudge(
   fetchFn: typeof fetch = fetch,
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<JudgeScores> {
-  const baseUrl = env.LLM_BASE_URL || "https://opencode.ai/inference/openai/v1";
+  const rawModel = env.LLM_JUDGE_MODEL || env.OPENCODE_MODEL || "";
+  if (!rawModel) throw new Error("need LLM_JUDGE_MODEL or OPENCODE_MODEL");
+  const target = apiTargetFor(rawModel, env.LLM_BASE_URL || "https://opencode.ai/inference/openai/v1");
+  if (!target.baseUrl) throw new Error(`unknown model provider in ${rawModel} (need LLM_BASE_URL)`);
+  if (!target.model) throw new Error(`empty model id in ${rawModel}`);
+  const baseUrl = target.baseUrl;
+  const model = target.model;
   const key = env.LLM_API_KEY || env.OPENCODE_API_KEY || "";
-  const model = env.LLM_JUDGE_MODEL || env.OPENCODE_MODEL || "";
-  if (!model) throw new Error("need LLM_JUDGE_MODEL or OPENCODE_MODEL");
   if (!key) throw new Error("need LLM_API_KEY or OPENCODE_API_KEY");
   const state = [`NEW: ${title}\n${body.slice(0, 1500)}`,
     ...candidates.slice(0, 10).map((c) => `#${c.number}: ${c.title} — ${c.summary}`)].join("\n");
