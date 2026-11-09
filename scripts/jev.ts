@@ -125,10 +125,13 @@ export function resolveJevTarget(raw: string): { url: string; model: string } {
 }
 
 export function jevEndpointFromEnv(env: NodeJS.ProcessEnv = process.env): JevEndpoint | null {
-  // NOTE: use || not ??: GitHub Actions renders unset vars as "" which must fall through.
-  const key = env.LLM_API_KEY || env.OPENCODE_API_KEY || env.TS_API_KEY || env.TYPESAFE_API_KEY || ""
-  if (!key) return null
+  // Key follows the resolved route: gateway routes take the OpenCode key,
+  // direct routes take the TypeSafe key. Never cross-send (would 401).
   const { url, model } = resolveJevTarget(env.JEV_MODEL || "")
+  const key = url === DIRECT_JEV_URL
+    ? env.TS_API_KEY || env.TYPESAFE_API_KEY || ""
+    : env.LLM_API_KEY || env.OPENCODE_API_KEY || ""
+  if (!key) return null
   return { url, key, model }
 }
 

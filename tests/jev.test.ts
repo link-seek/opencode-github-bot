@@ -119,9 +119,13 @@ describe("jevEndpointFromEnv (JEV_MODEL drives endpoint+model)", () => {
     const ep = jevEndpointFromEnv({ JEV_MODEL: "opencode/jev-1.13", OPENCODE_API_KEY: "k" } as any)
     expect(ep).toEqual({ url: OPENCODE_JEV_URL, key: "k", model: "jev-1.13" })
   })
-  test("typesafe/ prefix -> direct API", () => {
+  test("typesafe/ prefix -> direct API with TypeSafe key only", () => {
     const ep = jevEndpointFromEnv({ JEV_MODEL: "typesafe/jev-1.13.0", TS_API_KEY: "ts" } as any)
     expect(ep).toEqual({ url: DIRECT_JEV_URL, key: "ts", model: "jev-1.13.0" })
+  })
+  test("keys never cross routes", () => {
+    expect(jevEndpointFromEnv({ JEV_MODEL: "typesafe/jev-1.13.0", OPENCODE_API_KEY: "k" } as any)).toBeNull()
+    expect(jevEndpointFromEnv({ JEV_MODEL: "jev-1.13", TS_API_KEY: "ts" } as any)).toBeNull()
   })
   test("empty JEV_MODEL -> default opencode jev-1.13", () => {
     const ep = jevEndpointFromEnv({ JEV_MODEL: "", OPENCODE_API_KEY: "k" } as any)
