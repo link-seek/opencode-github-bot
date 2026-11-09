@@ -60,10 +60,14 @@ jobs:
               resp = urllib.request.urlopen(req, timeout=60)
               print(resp.read().decode(), end="")
           except urllib.error.HTTPError as e:
-              print(f"HTTP {e.code}: {e.read().decode(errors='replace')[:1000]}")
+              msg = f"HTTP {e.code}: {e.read().decode(errors='replace')[:1000]}"
+              print(msg, file=sys.stderr)
+              print(msg, end="")
               raise SystemExit(1)
           except Exception as e:
-              print(f"REQUEST FAILED: {type(e).__name__}: {e}")
+              msg = f"REQUEST FAILED: {type(e).__name__}: {e}"
+              print(msg, file=sys.stderr)
+              print(msg, end="")
               raise SystemExit(1)
           EOF
           head -c 1500 /tmp/jev-probe.json; echo
