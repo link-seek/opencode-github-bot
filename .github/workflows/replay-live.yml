@@ -1,0 +1,20 @@
+name: replay-live
+on:
+  push:
+    branches: [verify-report]
+jobs:
+  replay:
+    if: contains(github.event.head_commit.message, 'replay-probe')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: verify-report
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install
+      - env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          REPLAY_ISSUES: "1,2,3,5,7,8,9,10,11,12,13"
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+        run: bun scripts/replay.ts --policy keyword,jev,llm
