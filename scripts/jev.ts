@@ -117,13 +117,14 @@ export function resolveJevTarget(raw: string): { url: string; model: string } | 
   const m = (raw || "").trim()
   if (m.startsWith("zen/")) {
     const id = m.slice("zen/".length).trim()
-    return { url: ZEN_JEV_URL, model: id || DEFAULT_JEV_MODEL }
+    if (!id || id.includes("/")) return null
+    return { url: ZEN_JEV_URL, model: id }
   }
   const bare = m.startsWith("opencode/") ? m.slice("opencode/".length).trim() : m
   // Unknown provider prefix (e.g. a typo like "typesafe/..."): fail closed
   // instead of sending a garbage model id to the gateway.
-  if (bare.includes("/")) return null
-  return { url: OPENCODE_JEV_URL, model: bare || DEFAULT_JEV_MODEL }
+  if (!bare || bare.includes("/")) return null
+  return { url: OPENCODE_JEV_URL, model: bare }
 }
 
 export function jevEndpointFromEnv(env: NodeJS.ProcessEnv = process.env): JevEndpoint | null {

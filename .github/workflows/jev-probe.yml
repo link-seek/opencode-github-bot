@@ -29,8 +29,23 @@ jobs:
             zen/*)
               JEV_URL="https://opencode.ai/zen/v1/systemone"
               MODEL_ID="${MODEL#zen/}"
+              case "$MODEL_ID" in
+                "" | */*) echo "reject: bad zen model id: $MODEL" >&2; exit 1 ;;
+              esac
               KEY="${OPENCODE_API_KEY:-}"
               : "${KEY:?need secrets.OPENCODE_API_KEY for Zen probe (free needs key too)}"
+              ;;
+            opencode/*)
+              JEV_URL="https://opencode.ai/inference/systemone/v1/systemone"
+              MODEL_ID="${MODEL#opencode/}"
+              case "$MODEL_ID" in
+                "" | */*) echo "reject: bad opencode model id: $MODEL" >&2; exit 1 ;;
+              esac
+              KEY="${OPENCODE_API_KEY:?need secrets.OPENCODE_API_KEY for gateway probe}"
+              ;;
+            */*)
+              echo "reject: unknown model prefix: $MODEL (use bare, opencode/ or zen/)" >&2
+              exit 1
               ;;
             *)
               JEV_URL="https://opencode.ai/inference/systemone/v1/systemone"
