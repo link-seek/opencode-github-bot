@@ -134,7 +134,7 @@ export async function jevIntake(
   ep?: JevEndpoint | null,
   fetchFn: typeof fetch = fetch,
 ): Promise<JevScores | null> {
-  const endpoint = ep ?? jevEndpointFromEnv()
+  const endpoint = ep === undefined ? jevEndpointFromEnv() : ep
   if (!endpoint) return null
   const res = await fetchFn(endpoint.url, {
     method: "POST",

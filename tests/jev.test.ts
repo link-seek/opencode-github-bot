@@ -96,8 +96,15 @@ describe("jevIntake parsing", () => {
     expect(out!.duplicate).toBeNull()
     expect(out!.duplicateOf).toEqual([])
   })
-  test("null endpoint -> null (skip)", async () => {
-    expect(await jevIntake({ role: "d", freshTitle: "t", freshBody: "b" }, [], null)).toBeNull()
+  test("null stays null even with ambient keys (fail-closed, no env fallback)", async () => {
+    const prev = process.env.OPENCODE_API_KEY
+    process.env.OPENCODE_API_KEY = "ambient-should-not-leak"
+    try {
+      expect(await jevIntake({ role: "d", freshTitle: "t", freshBody: "b" }, [], null)).toBeNull()
+    } finally {
+      if (prev === undefined) delete process.env.OPENCODE_API_KEY
+      else process.env.OPENCODE_API_KEY = prev
+    }
   })
 })
 
