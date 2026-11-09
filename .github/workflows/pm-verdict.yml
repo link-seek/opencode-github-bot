@@ -1,0 +1,30 @@
+name: pm-verdict
+on:
+  issues:
+    types: [labeled, unlabeled, closed, reopened, edited]
+jobs:
+  record:
+    if: github.actor != 'github-actions[bot]' && !endsWith(github.actor, '[bot]')
+    runs-on: ubuntu-latest
+    permissions:
+      issues: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install
+      - env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          VERDICT_EVENT: ${{ github.event.action }}
+          VERDICT_ACTOR: ${{ github.actor }}
+        run: bun scripts/verdict.ts
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pm-verdicts-${{ github.event.issue.number }}-${{ github.run_attempt }}
+          path: pm-verdicts.jsonl
+          if-no-files-found: ignore
+          retention-days: 90

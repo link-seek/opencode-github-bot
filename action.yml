@@ -20,7 +20,7 @@ inputs:
     description: "GitHub token for API access (required)"
     required: true
   mode:
-    description: "review | fix-issue | intake"
+    description: "review | fix-issue | intake | verdict"
     required: false
     default: "review"
   issue-number:
@@ -67,10 +67,32 @@ inputs:
     description: "intake recall: off | keyword | cf | custom (default keyword)"
     required: false
     default: "keyword"
+  package-source:
+    description: "Bot code source: repo (checkout, fastest) or npm (published package, verifies releases)"
+    required: false
+    default: "repo"
+  package-version:
+    description: "npm dist-tag/version when package-source is npm"
+    required: false
+    default: "latest"
 
 runs:
   using: "composite"
   steps:
+    - name: Resolve package dir (repo checkout or published npm tarball)
+      id: pkgsrc
+      shell: bash
+      run: |
+        if [ "${{ inputs.package-source }}" = "npm" ]; then
+          PKG_TMP="$(mktemp -d)/bot-pkg"
+          mkdir -p "$PKG_TMP"
+          npm init -y --prefix "$PKG_TMP" >/dev/null 2>&1
+          npm install "opencode-github-bot@${{ inputs.package-version }}" --prefix "$PKG_TMP" --no-audit --no-fund
+          echo "dir=$PKG_TMP/node_modules/opencode-github-bot" >> "$GITHUB_OUTPUT"
+        else
+          echo "dir=$GITHUB_ACTION_PATH" >> "$GITHUB_OUTPUT"
+        fi
+
     - name: Install OpenCode v2
       shell: bash
       run: curl -fsSL https://opencode.ai/v2/install | bash
@@ -83,9 +105,10 @@ runs:
       shell: bash
       run: |
         mkdir -p .opencode/plugins .opencode/skills .opencode/agents
-        cp -r "$GITHUB_ACTION_PATH/.opencode/plugins/github-bot" .opencode/plugins/ 2>/dev/null || true
-        cp -r "$GITHUB_ACTION_PATH/.opencode/skills/"* .opencode/skills/ 2>/dev/null || true
-        cp -r "$GITHUB_ACTION_PATH/.opencode/agents/"* .opencode/agents/ 2>/dev/null || true
+        PKG_DIR="${{ steps.pkgsrc.outputs.dir }}"
+        cp -r "$PKG_DIR/.opencode/plugins/github-bot" .opencode/plugins/ 2>/dev/null || true
+        cp -r "$PKG_DIR/.opencode/skills/"* .opencode/skills/ 2>/dev/null || true
+        cp -r "$PKG_DIR/.opencode/agents/"* .opencode/agents/ 2>/dev/null || true
 
     - name: Gather PR context
       if: inputs.mode == 'review' && inputs.pr-number != ''
@@ -216,4 +239,32 @@ runs:
         VECTORIZE_INDEX: ${{ env.VECTORIZE_INDEX }}
       run: |
         if ! command -v bun >/dev/null 2>&1; then curl -fsSL https://bun.sh/install | bash; export PATH="$HOME/.bun/bin:$PATH"; fi
-        bun "$GITHUB_ACTION_PATH/scripts/intake-run.ts"
+        bun "${{ steps.pkgsrc.outputs.dir }}/scripts/intake-run.ts"
+    - name: Upload intake dataset row
+      if: inputs.mode == 'intake'
+      uses: actions/upload-artifact@v4
+      with:
+        name: pm-intake-records-${{ github.event.issue.number || inputs.issue-number || 'run' }}-${{ github.run_attempt }}
+        path: pm-intake-records.jsonl
+        if-no-files-found: ignore
+        retention-days: 90
+    - name: Record human verdict (no-LLM)
+      if: inputs.mode == 'verdict'
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        ISSUE_NUMBER: ${{ inputs.issue-number }}
+        VERDICT_EVENT: ${{ github.event.action }}
+        VERDICT_ACTOR: ${{ github.actor }}
+      run: |
+        if ! command -v bun >/dev/null 2>&1; then curl -fsSL https://bun.sh/install | bash; export PATH="$HOME/.bun/bin:$PATH"; fi
+        bun "${{ steps.pkgsrc.outputs.dir }}/scripts/verdict.ts"
+    - name: Upload verdict row
+      if: inputs.mode == 'verdict'
+      uses: actions/upload-artifact@v4
+      with:
+        name: pm-verdicts-${{ inputs.issue-number || 'run' }}-${{ github.run_attempt }}
+        path: pm-verdicts.jsonl
+        if-no-files-found: ignore
+        retention-days: 90
