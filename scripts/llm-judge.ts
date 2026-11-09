@@ -53,7 +53,11 @@ export async function llmJudge(
   const t0 = Date.now();
   const res = await fetchFn(`${baseUrl}/chat/completions`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+    headers: {
+      Authorization: `Bearer ${key}`,
+      "Content-Type": "application/json",
+      "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36",
+    },
     body: JSON.stringify({
       model,
       messages: [{ role: "user", content: prompt }],

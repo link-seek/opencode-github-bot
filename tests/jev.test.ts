@@ -25,8 +25,8 @@ describe("normalizeScore", () => {
 })
 
 describe("jev contract (docs-aligned)", () => {
-  test("defaults pinned: opencode gateway + jev-1.13", () => {
-    expect(DEFAULT_JEV_MODEL).toBe("jev-1.13")
+  test("defaults pinned: opencode gateway + free model", () => {
+    expect(DEFAULT_JEV_MODEL).toBe("jev-1.13-free")
     expect(OPENCODE_JEV_URL).toContain("opencode.ai")
     const q = buildJevQuestions("duty", [])
     expect(Object.keys(q).sort()).toEqual(
@@ -127,7 +127,7 @@ describe("jevEndpointFromEnv (JEV_MODEL drives endpoint+model)", () => {
     expect(jevEndpointFromEnv({ JEV_MODEL: "typesafe/jev-1.13.0", OPENCODE_API_KEY: "k" } as any)).toBeNull()
     expect(jevEndpointFromEnv({ JEV_MODEL: "jev-1.13", TS_API_KEY: "ts" } as any)).toBeNull()
   })
-  test("empty JEV_MODEL -> default opencode jev-1.13", () => {
+  test("empty JEV_MODEL -> default opencode free model", () => {
     const ep = jevEndpointFromEnv({ JEV_MODEL: "", OPENCODE_API_KEY: "k" } as any)
     expect(ep).toEqual({ url: OPENCODE_JEV_URL, key: "k", model: DEFAULT_JEV_MODEL })
   })

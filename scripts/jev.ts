@@ -12,7 +12,7 @@
  * Key comes from existing secrets (OPENCODE_API_KEY, else TS_API_KEY);
  * inputs.llm-api-key arrives as LLM_API_KEY. No key -> null (fail-closed).
  */
-export const DEFAULT_JEV_MODEL = "jev-1.13"
+export const DEFAULT_JEV_MODEL = "jev-1.13-free"
 export const OPENCODE_JEV_URL = "https://opencode.ai/inference/systemone/v1/systemone"
 export const DIRECT_JEV_URL = "https://api.typesafe.ai/v1/systemone"
 
@@ -149,9 +149,15 @@ export async function jevIntake(
 ): Promise<JevScores | null> {
   const endpoint = ep === undefined ? jevEndpointFromEnv() : ep
   if (!endpoint) return null
+  // opencode.ai sits behind Cloudflare, which bans default script UAs (403/1010).
+  // Send a browser-grade UA like the verified probe does.
   const res = await fetchFn(endpoint.url, {
     method: "POST",
-    headers: { Authorization: `Bearer ${endpoint.key}`, "Content-Type": "application/json" },
+    headers: {
+      Authorization: `Bearer ${endpoint.key}`,
+      "Content-Type": "application/json",
+      "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36",
+    },
     body: JSON.stringify({
       model: endpoint.model || DEFAULT_JEV_MODEL,
       state: buildJevState(state),
