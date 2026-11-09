@@ -129,9 +129,13 @@ describe("jevEndpointFromEnv (JEV_MODEL drives endpoint+model)", () => {
   test("TypeSafe keys are not read (opencode only)", () => {
     expect(jevEndpointFromEnv({ JEV_MODEL: "jev-1.13", TS_API_KEY: "ts" } as any)).toBeNull()
   })
-  test("empty JEV_MODEL -> null (explicit config required, fail closed)", () => {
-    expect(jevEndpointFromEnv({ JEV_MODEL: "", OPENCODE_API_KEY: "k" } as any)).toBeNull()
-    expect(jevEndpointFromEnv({ OPENCODE_API_KEY: "k" } as any)).toBeNull()
+  test("empty JEV_MODEL -> org default (gateway free model)", () => {
+    expect(jevEndpointFromEnv({ JEV_MODEL: "", OPENCODE_API_KEY: "k" } as any)).toEqual(
+      expect.objectContaining({ url: OPENCODE_JEV_URL, model: DEFAULT_JEV_MODEL }),
+    )
+    expect(jevEndpointFromEnv({ OPENCODE_API_KEY: "k" } as any)).toEqual(
+      expect.objectContaining({ url: OPENCODE_JEV_URL, model: DEFAULT_JEV_MODEL }),
+    )
   })
   test("inputs.llm-api-key arrives as LLM_API_KEY", () => {
     const ep = jevEndpointFromEnv({ JEV_MODEL: "jev-1.13", LLM_API_KEY: "l" } as any)

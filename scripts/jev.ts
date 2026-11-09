@@ -115,6 +115,8 @@ export interface JevEndpoint {
 
 export function resolveJevTarget(raw: string): { url: string; model: string } | null {
   const m = (raw || "").trim()
+  // Unset -> org default (gateway free model). Explicit garbage fails closed below.
+  if (!m) return { url: OPENCODE_JEV_URL, model: DEFAULT_JEV_MODEL }
   if (m.startsWith("zen/")) {
     const id = m.slice("zen/".length).trim()
     if (!id || id.includes("/")) return null
