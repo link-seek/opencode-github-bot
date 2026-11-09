@@ -131,15 +131,16 @@ function num(v: any, fb = 0): number {
 export async function jevIntake(
   state: IntakeState,
   candidates: CandidateDoc[],
-  ep: JevEndpoint | null = jevEndpointFromEnv(),
+  ep?: JevEndpoint | null,
   fetchFn: typeof fetch = fetch,
 ): Promise<JevScores | null> {
-  if (!ep) return null
-  const res = await fetchFn(ep.url, {
+  const endpoint = ep ?? jevEndpointFromEnv()
+  if (!endpoint) return null
+  const res = await fetchFn(endpoint.url, {
     method: "POST",
-    headers: { Authorization: `Bearer ${ep.key}`, "Content-Type": "application/json" },
+    headers: { Authorization: `Bearer ${endpoint.key}`, "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: ep.model || DEFAULT_JEV_MODEL,
+      model: endpoint.model || DEFAULT_JEV_MODEL,
       state: buildJevState(state),
       questions: buildJevQuestions(state.role, candidates),
     }),
@@ -177,6 +178,6 @@ export async function jevIntake(
       size: num(a?.size?.confidence, 0),
       priority: num(a?.priority?.confidence, 0),
     },
-    model: data?.model || ep.model || DEFAULT_JEV_MODEL,
+    model: data?.model || endpoint.model || DEFAULT_JEV_MODEL,
   }
 }
