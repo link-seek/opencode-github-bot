@@ -77,7 +77,7 @@ describe("jevIntake parsing", () => {
     const out = await jevIntake(
       { role: "d", freshTitle: "t", freshBody: "b" },
       [{ number: 7, title: "t7", summary: "s7" }, { number: 9, title: "t9", summary: "s9" }],
-      { url: "https://x", key: "k" },
+      { url: "https://x", key: "k", model: "m" },
       fakeFetch,
     )
     expect(out!.is_clear).toBeCloseTo(1.6 / 2, 5)
@@ -90,7 +90,7 @@ describe("jevIntake parsing", () => {
     const out = await jevIntake(
       { role: "d", freshTitle: "t", freshBody: "b" },
       [],
-      { url: "https://x", key: "k" },
+      { url: "https://x", key: "k", model: "m" },
       fakeFetch,
     )
     expect(out!.duplicate).toBeNull()

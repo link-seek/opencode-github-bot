@@ -107,12 +107,13 @@ export const SCORE_LEVELS = { is_clear: 3, size: 4, priority: 4 } as const
 export interface JevEndpoint {
   url: string
   key: string
-  model: string
+  model?: string
 }
 
 export function jevEndpointFromEnv(env: NodeJS.ProcessEnv = process.env): JevEndpoint | null {
   // NOTE: use || not ??: GitHub Actions renders unset vars as "" which must fall through.
-  const key = env.JEV_API_KEY || env.LLM_API_KEY || env.OPENCODE_API_KEY || env.TS_API_KEY || env.TYPESAFE_API_KEY || ""
+  // LLM_API_KEY_FALLBACK carries callers' env.LLM_API_KEY (inputs.llm-api-key arrives as LLM_API_KEY).
+  const key = env.JEV_API_KEY || env.LLM_API_KEY || env.LLM_API_KEY_FALLBACK || env.OPENCODE_API_KEY || env.TS_API_KEY || env.TYPESAFE_API_KEY || ""
   if (!key) return null
   return {
     url: env.JEV_URL || DEFAULT_JEV_URL,
@@ -138,7 +139,7 @@ export async function jevIntake(
     method: "POST",
     headers: { Authorization: `Bearer ${ep.key}`, "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: ep.model,
+      model: ep.model || DEFAULT_JEV_MODEL,
       state: buildJevState(state),
       questions: buildJevQuestions(state.role, candidates),
     }),
@@ -147,7 +148,9 @@ export async function jevIntake(
     const t = await res.text().catch(() => "")
     throw new Error(`jev: ${res.status} ${t.slice(0, 300)}`)
   }
-  const data = (await res.json()) as any
+  const data = await res.json().catch(() => {
+    throw new Error("jev: non-JSON 2xx response")
+  }) as any
   const a = data?.answers ?? {}
   const typeAns = a?.type ?? {}
   const dupOf: number[] = []
@@ -174,6 +177,6 @@ export async function jevIntake(
       size: num(a?.size?.confidence, 0),
       priority: num(a?.priority?.confidence, 0),
     },
-    model: data?.model || ep.model,
+    model: data?.model || ep.model || DEFAULT_JEV_MODEL,
   }
 }
