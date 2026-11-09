@@ -4,13 +4,17 @@
  *  - scores are NORMALIZED to 0-1 (raw score / top level number) before routing;
  *  - score confidences gate automation (low confidence -> human);
  *  - duplicates use one Noul per candidate (same_as_<n>), giving attribution.
- * Single endpoint path, fully env-parametrized (#9 follow-up):
- *  - JEV_URL / JEV_MODEL / JEV_API_KEY (key also accepts OPENCODE_API_KEY,
- *    TS_API_KEY, TYPESAFE_API_KEY for compat). Defaults = OpenCode gateway.
- *  - No key -> null (caller skips semantic triage, fail-closed to human).
+ * Single model variable (#9 follow-up): JEV_MODEL drives both endpoint and
+ * model id by provider prefix, same convention as OPENCODE_MODEL
+ * (opencode-go/beam-free works for both CLI and API):
+ *  - "opencode/jev-1.13" or bare "jev-1.13" -> OpenCode systemone gateway
+ *  - "typesafe/jev-1.13.0" -> direct TypeSafe API
+ * Key comes from existing secrets (OPENCODE_API_KEY, else TS_API_KEY);
+ * inputs.llm-api-key arrives as LLM_API_KEY. No key -> null (fail-closed).
  */
-export const DEFAULT_JEV_URL = "https://opencode.ai/inference/systemone/v1/systemone"
 export const DEFAULT_JEV_MODEL = "jev-1.13"
+export const OPENCODE_JEV_URL = "https://opencode.ai/inference/systemone/v1/systemone"
+export const DIRECT_JEV_URL = "https://api.typesafe.ai/v1/systemone"
 
 export interface CandidateDoc {
   number: number
@@ -110,16 +114,22 @@ export interface JevEndpoint {
   model?: string
 }
 
+export function resolveJevTarget(raw: string): { url: string; model: string } {
+  const m = (raw || "").trim()
+  if (m.startsWith("typesafe/")) {
+    const id = m.slice("typesafe/".length).trim()
+    return { url: DIRECT_JEV_URL, model: id || DEFAULT_JEV_MODEL }
+  }
+  const bare = m.startsWith("opencode/") ? m.slice("opencode/".length).trim() : m
+  return { url: OPENCODE_JEV_URL, model: bare || DEFAULT_JEV_MODEL }
+}
+
 export function jevEndpointFromEnv(env: NodeJS.ProcessEnv = process.env): JevEndpoint | null {
   // NOTE: use || not ??: GitHub Actions renders unset vars as "" which must fall through.
-  // LLM_API_KEY_FALLBACK carries callers' env.LLM_API_KEY (inputs.llm-api-key arrives as LLM_API_KEY).
-  const key = env.JEV_API_KEY || env.LLM_API_KEY || env.LLM_API_KEY_FALLBACK || env.OPENCODE_API_KEY || env.TS_API_KEY || env.TYPESAFE_API_KEY || ""
+  const key = env.LLM_API_KEY || env.OPENCODE_API_KEY || env.TS_API_KEY || env.TYPESAFE_API_KEY || ""
   if (!key) return null
-  return {
-    url: env.JEV_URL || DEFAULT_JEV_URL,
-    key,
-    model: env.JEV_MODEL || DEFAULT_JEV_MODEL,
-  }
+  const { url, model } = resolveJevTarget(env.JEV_MODEL || "")
+  return { url, key, model }
 }
 
 function num(v: any, fb = 0): number {

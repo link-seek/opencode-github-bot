@@ -3,10 +3,12 @@ import {
   buildJevQuestions,
   buildJevState,
   DEFAULT_JEV_MODEL,
-  DEFAULT_JEV_URL,
+  DIRECT_JEV_URL,
   jevEndpointFromEnv,
   jevIntake,
   normalizeScore,
+  OPENCODE_JEV_URL,
+  resolveJevTarget,
   SCORE_LEVELS,
 } from "../scripts/jev"
 
@@ -23,9 +25,9 @@ describe("normalizeScore", () => {
 })
 
 describe("jev contract (docs-aligned)", () => {
-  test("defaults pinned: single opencode path", () => {
+  test("defaults pinned: opencode gateway + jev-1.13", () => {
     expect(DEFAULT_JEV_MODEL).toBe("jev-1.13")
-    expect(DEFAULT_JEV_URL).toContain("opencode.ai")
+    expect(OPENCODE_JEV_URL).toContain("opencode.ai")
     const q = buildJevQuestions("duty", [])
     expect(Object.keys(q).sort()).toEqual(
       ["is_clear", "priority", "repo_fit", "size", "type"].sort(),
@@ -108,36 +110,29 @@ describe("jevIntake parsing", () => {
   })
 })
 
-describe("jevEndpointFromEnv (single path, env-parametrized)", () => {
-  test("defaults to opencode gateway on legacy OPENCODE_API_KEY", () => {
-    const ep = jevEndpointFromEnv({ OPENCODE_API_KEY: "k" } as any)
-    expect(ep).toEqual({ url: DEFAULT_JEV_URL, key: "k", model: DEFAULT_JEV_MODEL })
+describe("jevEndpointFromEnv (JEV_MODEL drives endpoint+model)", () => {
+  test("bare id -> opencode gateway", () => {
+    const ep = jevEndpointFromEnv({ JEV_MODEL: "jev-1.13", OPENCODE_API_KEY: "k" } as any)
+    expect(ep).toEqual({ url: OPENCODE_JEV_URL, key: "k", model: "jev-1.13" })
   })
-  test("JEV_* overrides all (direct TypeSafe example)", () => {
-    const ep = jevEndpointFromEnv({
-      JEV_URL: "https://api.typesafe.ai/v1/systemone",
-      JEV_MODEL: "jev-1.13.0",
-      JEV_API_KEY: "ts",
-      OPENCODE_API_KEY: "ignored",
-    } as any)
-    expect(ep).toEqual({
-      url: "https://api.typesafe.ai/v1/systemone",
-      key: "ts",
-      model: "jev-1.13.0",
-    })
+  test("opencode/ prefix -> opencode gateway, prefix stripped", () => {
+    const ep = jevEndpointFromEnv({ JEV_MODEL: "opencode/jev-1.13", OPENCODE_API_KEY: "k" } as any)
+    expect(ep).toEqual({ url: OPENCODE_JEV_URL, key: "k", model: "jev-1.13" })
   })
-  test("legacy TS_API_KEY still works (compat)", () => {
-    const ep = jevEndpointFromEnv({ TS_API_KEY: "t" } as any)
-    expect(ep!.key).toBe("t")
-    expect(ep!.url).toBe(DEFAULT_JEV_URL)
+  test("typesafe/ prefix -> direct API", () => {
+    const ep = jevEndpointFromEnv({ JEV_MODEL: "typesafe/jev-1.13.0", TS_API_KEY: "ts" } as any)
+    expect(ep).toEqual({ url: DIRECT_JEV_URL, key: "ts", model: "jev-1.13.0" })
+  })
+  test("empty JEV_MODEL -> default opencode jev-1.13", () => {
+    const ep = jevEndpointFromEnv({ JEV_MODEL: "", OPENCODE_API_KEY: "k" } as any)
+    expect(ep).toEqual({ url: OPENCODE_JEV_URL, key: "k", model: DEFAULT_JEV_MODEL })
+  })
+  test("inputs.llm-api-key arrives as LLM_API_KEY", () => {
+    const ep = jevEndpointFromEnv({ JEV_MODEL: "jev-1.13", LLM_API_KEY: "l" } as any)
+    expect(ep!.key).toBe("l")
   })
   test("no key -> null (fail-closed to human)", () => {
-    expect(jevEndpointFromEnv({} as any)).toBeNull()
-  })
-  test("empty strings fall through (Actions renders unset as '')", () => {
-    const ep = jevEndpointFromEnv({ JEV_API_KEY: "", OPENCODE_API_KEY: "k" } as any)
-    expect(ep!.key).toBe("k")
-    expect(jevEndpointFromEnv({ JEV_API_KEY: "", LLM_API_KEY: "l" } as any)!.key).toBe("l")
+    expect(jevEndpointFromEnv({ JEV_MODEL: "jev-1.13" } as any)).toBeNull()
   })
   test("request body carries env model", async () => {
     let body: any = null
