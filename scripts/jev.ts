@@ -111,7 +111,8 @@ export interface JevEndpoint {
 }
 
 export function jevEndpointFromEnv(env: NodeJS.ProcessEnv = process.env): JevEndpoint | null {
-  const key = env.JEV_API_KEY ?? env.OPENCODE_API_KEY ?? env.TS_API_KEY ?? env.TYPESAFE_API_KEY
+  // NOTE: use || not ??: GitHub Actions renders unset vars as "" which must fall through.
+  const key = env.JEV_API_KEY || env.LLM_API_KEY || env.OPENCODE_API_KEY || env.TS_API_KEY || env.TYPESAFE_API_KEY || ""
   if (!key) return null
   return {
     url: env.JEV_URL || DEFAULT_JEV_URL,

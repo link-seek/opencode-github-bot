@@ -43,8 +43,8 @@ export async function llmJudge(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<JudgeScores> {
   const baseUrl = env.LLM_BASE_URL ?? "https://opencode.ai/inference/openai/v1";
-  const key = env.LLM_API_KEY ?? env.OPENCODE_API_KEY ?? "";
-  const model = env.LLM_JUDGE_MODEL ?? env.OPENCODE_MODEL ?? "";
+  const key = env.LLM_API_KEY || env.OPENCODE_API_KEY || "";
+  const model = env.LLM_JUDGE_MODEL || env.OPENCODE_MODEL || "";
   if (!model) throw new Error("need LLM_JUDGE_MODEL or OPENCODE_MODEL");
   if (!key) throw new Error("need LLM_API_KEY or OPENCODE_API_KEY");
   const state = [`NEW: ${title}\n${body.slice(0, 1500)}`,

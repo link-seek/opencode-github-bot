@@ -127,6 +127,11 @@ describe("jevEndpointFromEnv (single path, env-parametrized)", () => {
   test("no key -> null (fail-closed to human)", () => {
     expect(jevEndpointFromEnv({} as any)).toBeNull()
   })
+  test("empty strings fall through (Actions renders unset as '')", () => {
+    const ep = jevEndpointFromEnv({ JEV_API_KEY: "", OPENCODE_API_KEY: "k" } as any)
+    expect(ep!.key).toBe("k")
+    expect(jevEndpointFromEnv({ JEV_API_KEY: "", LLM_API_KEY: "l" } as any)!.key).toBe("l")
+  })
   test("request body carries env model", async () => {
     let body: any = null
     const fakeFetch = (async (_u: any, init: any) => {

@@ -6,7 +6,7 @@
  */
 import { keywordRecallTopK, semanticRecallTopK, resolveRecallMode, type IssueDoc } from "./recall"
 import { cfConfigFromEnv, cfEmbed, cfMintChild, resolveAccountId } from "./cf-recall"
-import { jevIntake, type IntakeState } from "./jev"
+import { jevEndpointFromEnv, jevIntake, type IntakeState } from "./jev"
 import { routeIntake, type RouteResult } from "./intake-route"
 import { recallQuery, searchTopCandidates } from "./issue-search"
 
@@ -185,7 +185,7 @@ export async function runIntake(env: NodeJS.ProcessEnv = process.env): Promise<R
   }
   let scores: any = null
   try {
-    scores = await jevIntake(state, dupDocs)
+    scores = await jevIntake(state, dupDocs, jevEndpointFromEnv(env))
   } catch {
     scores = null
   }
