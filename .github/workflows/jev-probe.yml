@@ -44,8 +44,8 @@ jobs:
               KEY="${OPENCODE_API_KEY:?need secrets.OPENCODE_API_KEY for gateway probe}"
               ;;
           esac
-          python3 - "$JEV_URL" "$KEY" "$MODEL_ID" <<'EOF' | tee /tmp/jev-probe.json | head -c 1500
-          import json, sys, urllib.request
+          python3 - "$JEV_URL" "$KEY" "$MODEL_ID" <<'EOF' > /tmp/jev-probe.json
+          import json, sys, urllib.request, urllib.error
           url, key, model = sys.argv[1], sys.argv[2], sys.argv[3]
           body = json.dumps({
               "model": model,
@@ -60,8 +60,11 @@ jobs:
               resp = urllib.request.urlopen(req, timeout=60)
               print(resp.read().decode(), end="")
           except urllib.error.HTTPError as e:
-              print(f"HTTP {e.code}: {e.read().decode()[:1000]}")
+              print(f"HTTP {e.code}: {e.read().decode(errors='replace')[:1000]}")
+              raise SystemExit(1)
+          except Exception as e:
+              print(f"REQUEST FAILED: {type(e).__name__}: {e}")
               raise SystemExit(1)
           EOF
-          echo
+          head -c 1500 /tmp/jev-probe.json; echo
           python3 -c "import json; d=json.load(open('/tmp/jev-probe.json')); a=d.get('answers',{}).get('sky_blue',{}); print('noul=',a.get('noul'),'model=',d.get('model')); assert isinstance(a.get('noul'),(int,float)) and a['noul']>0.5, 'probe failed'"
