@@ -60,7 +60,7 @@ describe("llm-judge contract", () => {
         usage: { prompt_tokens: 100, completion_tokens: 20 },
       }),
     })) as unknown as typeof fetch
-    const r = await llmJudge("duty", "t", "b", [], fake, { LLM_API_KEY: "x", LLM_BASE_URL: "https://x" } as any)
+    const r = await llmJudge("duty", "t", "b", [], fake, { LLM_API_KEY: "x", LLM_BASE_URL: "https://x", OPENCODE_MODEL: "test-model" } as any)
     expect(r.type).toBe("bug")
     expect(r.inputTokens).toBe(100)
     expect(r.latencyMs).toBeGreaterThanOrEqual(0)

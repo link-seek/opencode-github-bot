@@ -44,7 +44,8 @@ export async function llmJudge(
 ): Promise<JudgeScores> {
   const baseUrl = env.LLM_BASE_URL ?? "https://opencode.ai/inference/openai/v1";
   const key = env.LLM_API_KEY ?? env.OPENCODE_API_KEY ?? "";
-  const model = env.LLM_JUDGE_MODEL ?? "glm-5.3-flash-free"; // free tier: no funds needed
+  const model = env.LLM_JUDGE_MODEL ?? env.OPENCODE_MODEL ?? "";
+  if (!model) throw new Error("need LLM_JUDGE_MODEL or OPENCODE_MODEL");
   if (!key) throw new Error("need LLM_API_KEY or OPENCODE_API_KEY");
   const state = [`NEW: ${title}\n${body.slice(0, 1500)}`,
     ...candidates.slice(0, 10).map((c) => `#${c.number}: ${c.title} — ${c.summary}`)].join("\n");
