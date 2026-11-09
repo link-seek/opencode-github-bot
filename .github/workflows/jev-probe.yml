@@ -21,11 +21,6 @@ jobs:
           set -euo pipefail
           MODEL="${JEV_MODEL_INPUT:?need jev-model input}"
           case "$MODEL" in
-            opencode/*)
-              JEV_URL="https://opencode.ai/inference/systemone/v1/systemone"
-              MODEL_ID="${MODEL#opencode/}"
-              KEY="${OPENCODE_API_KEY:?need secrets.OPENCODE_API_KEY for gateway probe}"
-              ;;
             zen/*)
               JEV_URL="https://opencode.ai/zen/v1/systemone"
               MODEL_ID="${MODEL#zen/}"
