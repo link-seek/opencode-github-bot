@@ -65,4 +65,12 @@ describe("llm-judge contract", () => {
     expect(r.inputTokens).toBe(100)
     expect(r.latencyMs).toBeGreaterThanOrEqual(0)
   })
+  test("malformed model output throws clear error (no crash)", async () => {
+    const { llmJudge } = await import("../scripts/llm-judge")
+    const fake = (async () => ({
+      ok: true,
+      json: async () => ({ choices: [{ message: { content: "no json here" } }], usage: {} }),
+    })) as unknown as typeof fetch
+    await expect(llmJudge("d", "t", "b", [], fake, { LLM_API_KEY: "x", OPENCODE_MODEL: "m" } as any)).rejects.toThrow("llm-judge")
+  })
 })

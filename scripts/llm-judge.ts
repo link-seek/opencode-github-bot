@@ -42,7 +42,7 @@ export async function llmJudge(
   fetchFn: typeof fetch = fetch,
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<JudgeScores> {
-  const baseUrl = env.LLM_BASE_URL ?? "https://opencode.ai/inference/openai/v1";
+  const baseUrl = env.LLM_BASE_URL || "https://opencode.ai/inference/openai/v1";
   const key = env.LLM_API_KEY || env.OPENCODE_API_KEY || "";
   const model = env.LLM_JUDGE_MODEL || env.OPENCODE_MODEL || "";
   if (!model) throw new Error("need LLM_JUDGE_MODEL or OPENCODE_MODEL");
@@ -66,7 +66,13 @@ export async function llmJudge(
   const text: string = data?.choices?.[0]?.message?.content ?? "{}";
   const start = text.indexOf("{");
   const end = text.lastIndexOf("}");
-  const j = JSON.parse(text.slice(start, end + 1)) as any;
+  if (start < 0 || end < 0 || end < start) throw new Error(`llm-judge: no JSON object in response: ${text.slice(0, 200)}`);
+  let j: any;
+  try {
+    j = JSON.parse(text.slice(start, end + 1)) as any;
+  } catch (e) {
+    throw new Error(`llm-judge: malformed JSON: ${text.slice(0, 200)}`);
+  }
   const type = typeof j.type === "string" && ["bug", "feature", "docs"].includes(j.type) ? j.type : "bug";
   return {
     repo_fit: clamp01(j.repo_fit),

@@ -174,6 +174,6 @@ export async function jevIntake(
       size: num(a?.size?.confidence, 0),
       priority: num(a?.priority?.confidence, 0),
     },
-    model: data?.model ?? ep.model,
+    model: data?.model || ep.model,
   }
 }
