@@ -535,10 +535,12 @@ async function runApply(env: NodeJS.ProcessEnv): Promise<void> {
           body: JSON.stringify({ title: s.title, body, labels: ["needs-triage"] }),
         })
       } catch (e) {
-        const msg = String((e as Error)?.message ?? e)
-        // Retry bare only on label validation failures (422 mentioning labels);
-        // anything else (auth, rate limit, abuse) must fail loudly.
-        if (!/ 422[\s:]/.test(msg) || !/label/i.test(msg)) throw e
+        const st = ghStatus(e);
+        const msg = String((e as Error)?.message ?? e);
+        // Best-effort only on label validation failures: parsed 422 status
+        // plus a label mention (not body-text matching). Anything else
+        // (auth, rate limit, abuse, other validation) fails loudly.
+        if (st !== 422 || !/label/i.test(msg)) throw e;
         console.log(`label attach failed, creating unlabeled: ${msg.slice(0, 200)}`)
         created_issue = await gh(`/repos/${repo}/issues`, token, {
           method: "POST",
@@ -557,6 +559,9 @@ async function runApply(env: NodeJS.ProcessEnv): Promise<void> {
     }
     throw e
   }
+  // created[] stays in topo (dependency) order for the tasklist and summary.
+  const body: string = String(issue.body ?? "")
+  if (!body.includes("## Split into")) {
     try {
       await gh(`/repos/${repo}/issues/${n}`, token, {
         method: "PATCH",
@@ -569,6 +574,7 @@ async function runApply(env: NodeJS.ProcessEnv): Promise<void> {
       if (st !== 403 && st !== 404) throw e
       console.log(`parent tasklist skipped (HTTP ${String(st)}): ${String((e as Error)?.message ?? e).slice(0, 160)}`)
     }
+  }
   const summaryHead = `Split applied: ${created.map((c) => `#${c.number}`).join(", ")}`
   try {
     const prior = await listComments(repo, n, token, "apply summary dedup")
