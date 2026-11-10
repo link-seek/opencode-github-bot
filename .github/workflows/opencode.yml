@@ -7,17 +7,25 @@ on:
     types: [created]
   issues:
     types: [assigned]
+  workflow_dispatch:
+    inputs:
+      issue-number:
+        description: 'Issue number to split-plan'
+        required: true
+        type: string
 
 jobs:
   opencode:
     if: |
       ((github.event_name == 'issue_comment' || github.event_name == 'pull_request_review_comment') &&
        (contains(github.event.comment.body, '/oc') ||
-        contains(github.event.comment.body, '/opencode')) &&
+        contains(github.event.comment.body, '/opencode') ||
+        contains(github.event.comment.body, 'approve split')) &&
        (github.event.comment.author_association == 'OWNER' ||
         github.event.comment.author_association == 'MEMBER')) ||
       (github.event_name == 'issues' &&
-       github.event.action == 'assigned')
+       github.event.action == 'assigned') ||
+      github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -31,7 +39,7 @@ jobs:
           token: ${{ secrets.AGENT_GITHUB_TOKEN }}
 
       - name: Run OpenCode (review)
-        if: github.event_name != 'issues'
+        if: github.event_name != 'issues' && github.event_name != 'workflow_dispatch' && !contains(github.event.comment.body, 'approve split')
         uses: ./
         with:
           model: ${{ vars.OPENCODE_MODEL }}
@@ -52,3 +60,23 @@ jobs:
           github-token: ${{ secrets.AGENT_GITHUB_TOKEN }}
           mode: fix-issue
           issue-number: ${{ github.event.issue.number }}
+
+      - name: Run split plan (manual)
+        if: github.event_name == 'workflow_dispatch'
+        uses: ./
+        with:
+          model: ${{ vars.OPENCODE_MODEL }}
+          llm-api-key: ${{ secrets.OPENCODE_API_KEY }}
+          github-token: ${{ secrets.AGENT_GITHUB_TOKEN }}
+          mode: split-plan
+          issue-number: ${{ github.event.inputs.issue-number }}
+
+      - name: Run split apply (human approved)
+        if: (github.event_name == 'issue_comment' || github.event_name == 'pull_request_review_comment') && contains(github.event.comment.body, 'approve split')
+        uses: ./
+        with:
+          model: ${{ vars.OPENCODE_MODEL }}
+          llm-api-key: ${{ secrets.OPENCODE_API_KEY }}
+          github-token: ${{ secrets.AGENT_GITHUB_TOKEN }}
+          mode: split-apply
+          issue-number: ${{ github.event.issue.number || github.event.pull_request.number }}
