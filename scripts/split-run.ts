@@ -109,6 +109,8 @@ export function validatePlan(raw: any, parent: number): { ok: true; plan: SplitP
       return { ok: false, error: `subs[${i}].title must start with "${tag}"` }
     if (typeof s?.goal !== "string" || !s.goal.trim()) return { ok: false, error: `subs[${i}] needs a goal` }
     if (!Array.isArray(s?.files)) return { ok: false, error: `subs[${i}].files must be an array` }
+    if (!s.files.every((f: unknown) => typeof f === "string" && (f as string).trim()))
+      return { ok: false, error: `subs[${i}].files must be non-empty strings` }
     if (s.files.length > 3) return { ok: false, error: `subs[${i}] touches ${s.files.length} files (>3)` }
     if (!Array.isArray(s?.acceptance) || s.acceptance.length === 0 || !s.acceptance.every((a: unknown) => typeof a === "string" && a.trim()))
       return { ok: false, error: `subs[${i}] needs non-empty acceptance criteria` }
@@ -116,6 +118,14 @@ export function validatePlan(raw: any, parent: number): { ok: true; plan: SplitP
       return { ok: false, error: `subs[${i}].depends_on must be 1-based indexes into subs (no self-refs)` }
     if (new Set(s.depends_on).size !== s.depends_on.length)
       return { ok: false, error: `subs[${i}].depends_on has duplicates` }
+    for (const [k, v] of [["title", s.title], ["goal", s.goal]] as const) {
+      if (String(v).includes("<!--") || String(v).includes("-->"))
+        return { ok: false, error: `subs[${i}].${k} must not contain HTML comment markers` }
+    }
+    for (const a of [...(s.acceptance as unknown[]), ...(s.files as unknown[])]) {
+      if (String(a).includes("<!--") || String(a).includes("-->"))
+        return { ok: false, error: `subs[${i}] strings must not contain HTML comment markers` }
+    }
     subs.push({ title: s.title, goal: s.goal.trim(), files: s.files, acceptance: s.acceptance.map((a: string) => a.trim()), depends_on: [...s.depends_on].sort((a: number, b: number) => a - b) })
   }
   // Cycle check (Kahn): indegree of j = number of its unprocessed prerequisites.
@@ -189,7 +199,7 @@ export function renderSubIssueBody(s: PlanSub, _idx: number, parentNum: number, 
     `## 依赖`,
     deps,
     ``,
-    `<!--pm-split-part:${parentNum}>-->`,
+    `<!--pm-split-part:${parentNum}-->`,
   ].join("\n")
 }
 
@@ -231,11 +241,34 @@ async function findSplitPlan(comments: Array<{ body?: string }>): Promise<SplitP
   return null
 }
 
+const SPLIT_LABELS: Record<string, string> = {
+  "split-proposed": "fbca04",
+  "split-applied": "0e8a16",
+  "needs-triage": "ededed",
+}
+
+/** Labels must exist before use (422 otherwise). Idempotent: ignores already-exists. */
+async function ensureLabels(repo: string, token: string, names: string[]) {
+  for (const name of names) {
+    await gh(`/repos/${repo}/labels`, token, {
+      method: "POST",
+      body: JSON.stringify({ name, color: SPLIT_LABELS[name] ?? "ededed" }),
+    }).catch((e) => {
+      if (!String((e as Error)?.message ?? e).includes("422")) throw e
+    })
+  }
+}
+
 async function findExistingChild(repo: string, token: string, title: string, parent: number): Promise<number | null> {
   // Idempotency: reuse an open issue with the same title that already points at the parent.
-  const res = await gh(`/search/issues?q=${encodeURIComponent(`repo:${repo} "${title}" in:title state:open`)}`, token).catch(() => null)
-  const items = (res?.items ?? []) as Array<{ number: number; body?: string }>
-  const hit = items.find((it) => (it.body ?? "").includes(`Part of #${parent}`))
+  // Title is matched client-side (never interpolated into the search query).
+  const res = (await gh(
+    `/search/issues?q=${encodeURIComponent(`repo:${repo} "Part of #${parent}" in:body state:open`)}`,
+    token,
+  )) as any
+  const items = (res?.items ?? []) as Array<{ number: number; title?: string; body?: string }>
+  const norm = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim()
+  const hit = items.find((it) => norm(it.title ?? "") === norm(title) && (it.body ?? "").includes(`Part of #${parent}`))
   return hit ? hit.number : null
 }
 
@@ -324,6 +357,7 @@ async function runPlanPost(env: NodeJS.ProcessEnv): Promise<void> {
   }
   const issue = (await gh(`/repos/${repo}/issues/${n}`, token)) as any
   await postComment(repo, n, token, renderDraft(v.plan, String(issue.title ?? "")))
+  await ensureLabels(repo, token, ["split-proposed"])
   await applyLabels(repo, n, token, ["split-proposed"])
   await appendRecord({ v: 1, ts: new Date().toISOString(), repo, issue: n, phase: "plan", ok: true, verdict: "split", subs: v.plan.subs.length })
   await fs.promises.unlink(env.SPLIT_PLAN_PATH || "pm-split-plan.json").catch(() => null)
@@ -353,6 +387,7 @@ async function runApply(env: NodeJS.ProcessEnv): Promise<void> {
   const v = validatePlan(plan, n)
   if (!v.ok || v.plan.verdict !== "split") throw new Error(`approved plan invalid: ${!v.ok ? (v as any).error : "rejected"}`)
   const parentTitle = String(issue.title ?? "")
+  await ensureLabels(repo, token, ["split-applied", "needs-triage"])
   const created: Array<{ number: number; title: string }> = []
   for (const idx of topoOrder(v.plan.subs)) {
     const s = v.plan.subs[idx]

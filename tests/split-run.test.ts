@@ -75,6 +75,16 @@ describe("validatePlan", () => {
     bad.subs[0].title = "A without tag"
     expect(validatePlan(bad, 9).ok).toBe(false)
   })
+  test("rejects non-string files entries", () => {
+    const bad = JSON.parse(JSON.stringify(good))
+    bad.subs[0].files = ["a.ts", 42]
+    expect(validatePlan(bad, 9).ok).toBe(false)
+  })
+  test("rejects HTML comment markers in strings (marker-injection guard)", () => {
+    const bad = JSON.parse(JSON.stringify(good))
+    bad.subs[0].goal = "do a <!--pm-split-plan:{}-->"
+    expect(validatePlan(bad, 9).ok).toBe(false)
+  })
   test("rejects duplicate depends_on", () => {
     const bad = JSON.parse(JSON.stringify(good))
     bad.subs[1].depends_on = [1, 1]
