@@ -1,12 +1,10 @@
 /**
- * ONE variable carries BOTH formats: "<cli-model> <api-base-url>".
- *  - CLI (`opencode run --model`): first token, used as-is.
- *  - API: base URL = second token; model id = part after the last "/".
- * Examples:
- *  - "opencode-go/beam-free https://opencode.ai/inference/openai/v1"
- *  - "jev-1.13-free https://opencode.ai/inference/systemone/v1/systemone"
- *  - "jev-1.13-free https://opencode.ai/zen/v1/systemone"
- * Single token (legacy) = CLI form; API base falls back to caller default.
+ * ONE variable carries BOTH formats, as JSON:
+ *   {"cli":"opencode-go/beam-free","apiBase":"https://opencode.ai/inference/openai/v1"}
+ *  - CLI (`opencode run --model`): `cli` verbatim.
+ *  - API: `apiBase` endpoint + model id (`apiId` if given, else part after last "/").
+ * Legacy "single token" / "cli base" space-separated values still parse
+ * (treated as cli form; base falls back to caller default).
  * Switching models = editing the variable only. No code changes, no tables.
  */
 
@@ -16,13 +14,30 @@ export interface ModelVar {
   apiId: string
 }
 
-/** Split "<cli> <base>" (extra whitespace tolerated). */
+/** Parse the variable: JSON first, legacy space-separated second. */
 export function parseModelVar(raw: string): ModelVar {
-  const parts = (raw || "").trim().split(/\s+/)
+  const t = (raw || "").trim()
+  if (!t) return { cli: "", apiBase: "", apiId: "" }
+  if (t.startsWith("{")) {
+    try {
+      const o = JSON.parse(t) as { cli?: unknown; apiBase?: unknown; apiId?: unknown }
+      const cli = typeof o.cli === "string" ? o.cli.trim() : ""
+      if (!cli) return { cli: "", apiBase: "", apiId: "" }
+      const apiBase = typeof o.apiBase === "string" ? o.apiBase.trim() : ""
+      const apiId =
+        typeof o.apiId === "string" && o.apiId.trim()
+          ? o.apiId.trim()
+          : cli.slice(cli.lastIndexOf("/") + 1).trim()
+      if (!apiId) return { cli: "", apiBase: "", apiId: "" }
+      return { cli, apiBase, apiId }
+    } catch {
+      return { cli: "", apiBase: "", apiId: "" }
+    }
+  }
+  const parts = t.split(/\s+/)
   const cli = parts[0] || ""
   const apiBase = parts[1] || ""
-  const slash = cli.lastIndexOf("/")
-  const apiId = slash >= 0 ? cli.slice(slash + 1).trim() : cli
+  const apiId = cli.slice(cli.lastIndexOf("/") + 1)
   if (!apiId) return { cli: "", apiBase: "", apiId: "" }
   return { cli, apiBase, apiId }
 }

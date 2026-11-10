@@ -220,8 +220,10 @@ runs:
         OPENCODE_CONFIG_CONTENT: '{"permission":"allow"}'
       run: |
         export PATH="$HOME/.opencode/bin:$PATH"
-        # MODEL is "<cli-model> <api-base-url>"; CLI takes the first token.
-        CLI_MODEL="${MODEL%% *}"
+        # MODEL is JSON {"cli","apiBase"} (legacy: space-separated or bare id).
+        # CLI takes the cli field verbatim.
+        CLI_MODEL="$(python3 -c "import json,sys; v=sys.argv[1].strip(); print(json.loads(v).get('cli','') if v.startswith('{') else v.split()[0] if v.split() else '')" "$MODEL")"
+        : "${CLI_MODEL:?empty model}"
         if [ -n "${REVIEW_PROMPT}" ]; then
           opencode run --agent github-bot --model "${CLI_MODEL}" "Mode: ${MODE}. Repository: ${REPOSITORY}. PR number: ${PR_NUMBER}. Issue number: ${ISSUE_NUMBER}. Read .opencode/pr-context.md for full context. Review prompt: ${REVIEW_PROMPT}"
         else

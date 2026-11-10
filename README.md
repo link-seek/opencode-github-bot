@@ -59,7 +59,7 @@ Registers tools: `gh-pr-comment`, `gh-pr-review`, `finish-review`, `finish-fix`.
     recall-mode: keyword # off | keyword | cf | custom
   env:
     OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }} # Jev key (gateway + Zen)
-    JEV_MODEL: ${{ vars.JEV_MODEL }} # "<cli-id> <api-base-url>", e.g. "jev-1.13-free https://opencode.ai/inference/systemone/v1/systemone"
+    JEV_MODEL: ${{ vars.JEV_MODEL }} # JSON {"cli","apiBase"}, e.g. {"cli":"jev-1.13-free","apiBase":"https://opencode.ai/inference/systemone/v1/systemone"}
 ```
 
 Requires `.github/repo-role.yml` (what this repo owns, natural language). See [#9](https://github.com/link-seek/opencode-github-bot/issues/9) for routing rules and thresholds.
