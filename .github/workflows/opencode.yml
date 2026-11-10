@@ -37,6 +37,9 @@ jobs:
           token: ${{ secrets.AGENT_GITHUB_TOKEN }}
       - name: Run intake triage
         uses: ./
+        env:
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          JEV_MODEL: ${{ vars.JEV_MODEL }}
         with:
           model: ${{ vars.OPENCODE_MODEL }}
           llm-api-key: ${{ secrets.OPENCODE_API_KEY }}
