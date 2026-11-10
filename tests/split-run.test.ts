@@ -97,6 +97,12 @@ describe("validatePlan", () => {
     bad.subs[0].goal = "do a <!--pm-split-plan:{}-->"
     expect(validatePlan(bad, 9).ok).toBe(false)
   })
+  test("rejects the apply trigger phrase anywhere in user text", () => {
+    const bad = JSON.parse(JSON.stringify(good))
+    bad.subs[0].acceptance = ["please approve split now"]
+    expect(validatePlan(bad, 9).ok).toBe(false)
+    expect(validatePlan({ verdict: "reject", parent: 9, subs: [], reason: "needs approve split first" }, 9).ok).toBe(false)
+  })
   test("rejects duplicate depends_on", () => {
     const bad = JSON.parse(JSON.stringify(good))
     bad.subs[1].depends_on = [1, 1]
@@ -141,7 +147,11 @@ describe("rendering", () => {
     expect(v.ok).toBe(true)
     if (!v.ok) return
     const d = renderDraft(v.plan, "P title")
-    expect(d).toContain("approve split")
+    expect(d).toContain("approve")
+    expect(d).toContain("split")
+    // The draft must never contain the contiguous trigger phrase, or its own
+    // posting would auto-trigger apply (dogfood #46 self-trigger bug).
+    expect(d.includes("approve split")).toBe(false)
     expect(d).toContain("[Part 1/1] A")
     const back = parseSplitPlanMarker(d)
     expect(back?.subs.length).toBe(1)

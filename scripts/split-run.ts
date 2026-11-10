@@ -127,6 +127,8 @@ export function validatePlan(raw: any, parent: number): { ok: true; plan: SplitP
     if (typeof raw.reason !== "string" || !raw.reason.trim()) return { ok: false, error: "reject needs a reason" }
     if (raw.reason.includes("<!--") || raw.reason.includes("-->"))
       return { ok: false, error: "reject reason must not contain HTML comment markers" }
+    if (raw.reason.toLowerCase().includes("approve split"))
+      return { ok: false, error: "reject reason must not contain the apply trigger phrase" }
     if (raw.parent != null && raw.parent !== parent)
       return { ok: false, error: `reject plan is for #${JSON.stringify(raw.parent)}, not #${parent}` }
     return { ok: true, plan: { verdict: "reject", parent, subs: [], reason: raw.reason.trim() } }
@@ -156,12 +158,18 @@ export function validatePlan(raw: any, parent: number): { ok: true; plan: SplitP
     if (new Set(s.depends_on).size !== s.depends_on.length)
       return { ok: false, error: `subs[${i}].depends_on has duplicates` }
     for (const [k, v] of [["title", s.title], ["goal", s.goal]] as const) {
-      if (String(v).includes("<!--") || String(v).includes("-->"))
+      const t = String(v)
+      if (t.includes("<!--") || t.includes("-->"))
         return { ok: false, error: `subs[${i}].${k} must not contain HTML comment markers` }
+      if (t.toLowerCase().includes("approve split"))
+        return { ok: false, error: `subs[${i}].${k} must not contain the apply trigger phrase` }
     }
     for (const a of [...(s.acceptance as unknown[]), ...(s.files as unknown[])]) {
-      if (String(a).includes("<!--") || String(a).includes("-->"))
+      const t = String(a)
+      if (t.includes("<!--") || t.includes("-->"))
         return { ok: false, error: `subs[${i}] strings must not contain HTML comment markers` }
+      if (t.toLowerCase().includes("approve split"))
+        return { ok: false, error: `subs[${i}] strings must not contain the apply trigger phrase` }
     }
     subs.push({ title: s.title, goal: s.goal.trim(), files: s.files, acceptance: s.acceptance.map((a: string) => a.trim()), depends_on: [...s.depends_on].sort((a: number, b: number) => a - b) })
   }
@@ -223,7 +231,7 @@ export function renderDraft(plan: SplitPlan, parentTitleRaw: string): string {
     ``,
     criteria,
     ``,
-    `> Reply \`approve split\` (OWNER/MEMBER) to create these sub-issues. Granularity: 1 sub-issue = one finish-fix run (≤3 files, max 5 subs).`,
+    `> To approve, post a comment with the word "approve", a space, then the word "split", on a single line (OWNER/MEMBER only). Granularity: 1 sub-issue = one finish-fix run (≤3 files, max 5 subs).`,
     splitPlanMarker(plan),
   ].join("\n")
 }
