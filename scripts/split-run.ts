@@ -578,7 +578,11 @@ async function runApply(env: NodeJS.ProcessEnv): Promise<void> {
   const summaryHead = `Split applied: ${created.map((c) => `#${c.number}`).join(", ")}`
   try {
     const prior = await listComments(repo, n, token, "apply summary dedup")
-    const already = prior.some((c) => String(c.body ?? "").includes(summaryHead))
+    // Only trusted authors count: anyone can paste the headline, only the
+    // bot/maintainer copy suppresses a repost.
+    const already = prior
+      .filter((c) => c.user?.type === "Bot" || c.author_association === "OWNER" || c.author_association === "MEMBER")
+      .some((c) => String(c.body ?? "").includes(summaryHead))
     if (!already) {
       await postComment(
         repo, n, token,
