@@ -220,11 +220,9 @@ runs:
         OPENCODE_CONFIG_CONTENT: '{"permission":"allow"}'
       run: |
         export PATH="$HOME/.opencode/bin:$PATH"
-        # MODEL is JSON {"cli","apiBase"} (legacy: space-separated or bare id).
-        # CLI takes the cli field verbatim. Single line: multi-line $() breaks
-        # the runner's script rendering.
-        CLI_MODEL="$(MODEL="$MODEL" python3 -c "import json,os; v=os.environ.get('MODEL','').strip(); o=json.loads(v) if v.startswith('{') else None; print((str(o.get('cli') or '').strip() if isinstance(o,dict) else ('' if v.startswith('{') else (v.split()[0] if v.split() else ''))))" 2>/dev/null)"
-        : "${CLI_MODEL:?empty model (check MODEL JSON)}"
+        # MODEL is the unified variable (JSON {"cli","apiBase"}, legacy formats accepted).
+        # CLI takes the extracted id verbatim; see scripts/model-cli.py.
+        CLI_MODEL="$(python3 "${{ steps.pkgsrc.outputs.dir }}/scripts/model-cli.py" "$MODEL")"
         if [ -n "${REVIEW_PROMPT}" ]; then
           opencode run --agent github-bot --model "${CLI_MODEL}" "Mode: ${MODE}. Repository: ${REPOSITORY}. PR number: ${PR_NUMBER}. Issue number: ${ISSUE_NUMBER}. Read .opencode/pr-context.md for full context. Review prompt: ${REVIEW_PROMPT}"
         else
