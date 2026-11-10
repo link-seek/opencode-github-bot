@@ -17,6 +17,10 @@ describe("splitModelTarget", () => {
       model: "jev-1.13-free",
     })
     expect(splitModelTarget("opencode/")).toEqual({ provider: "", model: "opencode/" })
+    expect(splitModelTarget("opencode / beam-free")).toEqual({
+      provider: "opencode",
+      model: "beam-free",
+    })
   })
 })
 

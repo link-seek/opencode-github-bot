@@ -47,7 +47,7 @@ export async function llmJudge(
 ): Promise<JudgeScores> {
   const rawModel = (env.LLM_JUDGE_MODEL || env.OPENCODE_MODEL || "").trim();
   if (!rawModel) throw new Error("need LLM_JUDGE_MODEL or OPENCODE_MODEL");
-  const target = apiTargetFor(rawModel, env.LLM_BASE_URL || "");
+  const target = apiTargetFor(rawModel, (env.LLM_BASE_URL || "").trim());
   // Bare ids (no provider) default to the OpenCode gateway; an explicit but
   // unknown provider fails closed instead of silently hitting the gateway.
   const baseUrl = target.baseUrl || (!target.provider ? "https://opencode.ai/inference/openai/v1" : "");

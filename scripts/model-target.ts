@@ -22,7 +22,10 @@ export function splitModelTarget(raw: string): { provider: string; model: string
   const m = (raw || "").trim()
   const i = m.indexOf("/")
   if (i <= 0 || i === m.length - 1) return { provider: "", model: m }
-  return { provider: m.slice(0, i), model: m.slice(i + 1) }
+  const provider = m.slice(0, i).trim()
+  const model = m.slice(i + 1).trim()
+  if (!provider || !model) return { provider: "", model: m }
+  return { provider, model }
 }
 
 /** Resolve an API target: provider table first, then caller fallback base URL. */
