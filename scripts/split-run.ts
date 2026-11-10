@@ -549,10 +549,16 @@ async function runApply(env: NodeJS.ProcessEnv): Promise<void> {
   // created[] stays in topo (dependency) order for the tasklist and summary.
   const body: string = String(issue.body ?? "")
   if (!body.includes("## Split into")) {
-    await gh(`/repos/${repo}/issues/${n}`, token, {
-      method: "PATCH",
-      body: JSON.stringify({ body: `${body.trim()}\n\n${renderParentSplitSection(created)}` }),
-    })
+    try {
+      await gh(`/repos/${repo}/issues/${n}`, token, {
+        method: "PATCH",
+        body: JSON.stringify({ body: `${body.trim()}\n\n${renderParentSplitSection(created)}` }),
+      })
+    } catch (e) {
+      // Best-effort: some tokens cannot edit issues (admin-only PATCH).
+      // Traceability survives via "Part of #N" backlinks + the summary below.
+      console.log(`parent tasklist skipped: ${String((e as Error)?.message ?? e).slice(0, 200)}`)
+    }
   }
   await removeLabel(repo, n, token, "split-proposed").catch(() => null)
   await applyLabels(repo, n, token, ["split-applied"])
@@ -560,7 +566,9 @@ async function runApply(env: NodeJS.ProcessEnv): Promise<void> {
     repo, n, token,
     [
       `Split applied: ${created.map((c) => `#${c.number}`).join(", ")}`,
-      ...created.map((c) => `- #${c.number} ${c.title}`),
+      ...created.map((c) => `- [ ] #${c.number} ${c.title}`),
+      ``,
+      `(Parent tasklist mirrors this list when the token allows issue edits.)`,
     ].join("\n"),
   )
   await appendRecord({ v: 1, ts: new Date().toISOString(), repo, issue: n, phase: "apply", ok: true, children: created.map((c) => c.number) })
