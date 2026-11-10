@@ -210,6 +210,10 @@ runs:
         bun "${{ steps.pkgsrc.outputs.dir }}/scripts/split-run.ts"
 
     - name: Run OpenCode v2
+      # LLM agent only: deterministic modes (intake/verdict/split-apply) run
+      # scripts only. An unguided agent must never freeload on those runs
+      # (dogfood #46: it read the draft and applied the split by itself).
+      if: inputs.mode == 'review' || inputs.mode == 'fix-issue' || inputs.mode == 'split-plan'
       shell: bash
       env:
         MODEL: ${{ inputs.model }}
