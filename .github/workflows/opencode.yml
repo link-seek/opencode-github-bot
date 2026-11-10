@@ -10,15 +10,21 @@ on:
   workflow_dispatch:
     inputs:
       issue-number:
-        description: 'Issue number to split-plan'
+        description: 'Issue number to process'
         required: true
+        type: string
+      mode:
+        description: 'split-plan (default) or intake (re-run triage)'
+        required: false
+        default: 'split-plan'
         type: string
 
 jobs:
   triage:
     # New human issues get auto-triaged on open. Bot-created sub-issues
     # ("Part of #N") are pre-triaged and skipped inside intake-run.
-    if: github.event_name == 'issues' && github.event.action == 'opened'
+    # workflow_dispatch with mode=intake allows re-running triage for one issue.
+    if: (github.event_name == 'issues' && github.event.action == 'opened') || (github.event_name == 'workflow_dispatch' && (github.event.inputs.mode == '' || github.event.inputs.mode == 'intake'))
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -36,7 +42,7 @@ jobs:
           llm-api-key: ${{ secrets.OPENCODE_API_KEY }}
           github-token: ${{ secrets.AGENT_GITHUB_TOKEN }}
           mode: intake
-          issue-number: ${{ github.event.issue.number }}
+          issue-number: ${{ github.event.issue.number || github.event.inputs.issue-number }}
           recall-mode: keyword
           collect-feedback: "false"
 
@@ -87,7 +93,7 @@ jobs:
           issue-number: ${{ github.event.issue.number }}
 
       - name: Run split plan (manual)
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'workflow_dispatch' && (github.event.inputs.mode == '' || github.event.inputs.mode == 'split-plan')
         uses: ./
         with:
           model: ${{ vars.OPENCODE_MODEL }}
