@@ -1,5 +1,19 @@
 import { describe, expect, test } from "bun:test"
-import { hitHardWords, visibleComment, hiddenMarker } from "../scripts/intake-run"
+import { hitHardWords, isPretriagedChild, visibleComment, hiddenMarker } from "../scripts/intake-run"
+
+describe("isPretriagedChild", () => {
+  const marker = "<!--pm-split-part:46-->"
+  const bot = { type: "Bot", association: "NONE" }
+  const owner = { type: "User", association: "OWNER" }
+  const stranger = { type: "User", association: "CONTRIBUTOR" }
+  test("requires marker AND trusted author", () => {
+    expect(isPretriagedChild("t", `x\n${marker}`, bot)).toBe(true)
+    expect(isPretriagedChild("t", `x\n${marker}`, owner)).toBe(true)
+    expect(isPretriagedChild("t", "Part of #46: foo", bot)).toBe(false)
+    expect(isPretriagedChild("t", `x\n${marker}`, stranger)).toBe(false)
+    expect(isPretriagedChild("t", "plain", bot)).toBe(false)
+  })
+})
 
 describe("hitHardWords", () => {
   test("matches case-insensitive", () => {

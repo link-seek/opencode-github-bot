@@ -366,7 +366,28 @@ async function listComments(repo: string, n: number, token: string, why: string)
     return []
   }
 }
-async function findExistingChild(repo: string, token: string, title: string, parent: number): Promise<number | null> {
+/* Best-effort native sub-issue links. Logs linked/skipped counts.
+ * NOTE: the sub-issues API takes the global issue id, NOT the per-repo number. */
+async function linkChildren(
+  repo: string,
+  token: string,
+  parent: number,
+  children: Array<{ number: number; id: number }>,
+): Promise<void> {
+  let linked = 0
+  for (const c of children) {
+    await gh(`/repos/${repo}/issues/${parent}/sub_issues`, token, {
+      method: "POST",
+      body: JSON.stringify({ sub_issue_id: c.id }),
+    }).then(
+      () => { linked++ },
+      (e: unknown) => console.log(`sub-issue link skipped for #${c.number}: ${String((e as Error)?.message ?? e).slice(0, 160)}`),
+    )
+  }
+  console.log(`sub-issue links: ${linked}/${children.length} ok`)
+}
+
+async function findExistingChild(repo: string, token: string, title: string, parent: number): Promise<{ number: number; id: number } | null> {
   // Idempotency: reuse an open issue with the same title that already points at the parent.
   // Title is matched client-side (never interpolated into the search query).
   // Search is retried (transient rate limits); sustained failure proceeds as
@@ -376,10 +397,10 @@ async function findExistingChild(repo: string, token: string, title: string, par
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       const res = (await gh(`/search/issues?q=${q}&per_page=100`, token)) as any
-      const items = (res?.items ?? []) as Array<{ number: number; title?: string; body?: string }>
+      const items = (res?.items ?? []) as Array<{ number: number; id: number; title?: string; body?: string }>
       const norm = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim()
       const hit = items.find((it) => norm(it.title ?? "") === norm(title) && (it.body ?? "").includes(`Part of #${parent}`))
-      return hit ? hit.number : null
+      return hit ? { number: hit.number, id: hit.id } : null
     } catch (e) {
       lastErr = e
       await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)))
@@ -517,14 +538,14 @@ async function runApply(env: NodeJS.ProcessEnv): Promise<void> {
   await ensureLabels(repo, token, ["needs-triage"]).catch((e) => {
     console.log(`needs-triage label unavailable, continuing unlabeled: ${String((e as Error)?.message ?? e)}`)
   })
-  const created: Array<{ number: number; title: string }> = []
+  const created: Array<{ number: number; title: string; id: number }> = []
   try {
     for (const idx of topoOrder(v.plan.subs)) {
       const s = v.plan.subs[idx]
       const existing = await findExistingChild(repo, token, s.title, n)
       if (existing != null) {
-        created.push({ number: existing, title: s.title })
-        console.log(`reuse existing #${existing} for "${s.title}"`)
+      created.push({ number: existing.number, title: s.title, id: existing.id })
+      console.log(`reuse existing #${existing.number} for "${s.title}"`)
         continue
       }
       const body = renderSubIssueBody(s, idx, n, parentTitle)
@@ -547,11 +568,12 @@ async function runApply(env: NodeJS.ProcessEnv): Promise<void> {
           body: JSON.stringify({ title: s.title, body }),
         })
       }
-      created.push({ number: created_issue.number, title: s.title })
+      created.push({ number: created_issue.number, title: s.title, id: created_issue.id })
     }
   } catch (e) {
     // Partial progress must not be silent: human re-runs apply (dedup via title match).
     if (created.length) {
+      await linkChildren(repo, token, n, created)
       await postComment(
         repo, n, token,
         [`Split partially applied before failure (${created.map((c) => `#${c.number}`).join(", ")}):`, String((e as Error)?.message ?? e), "Re-run approve to resume; existing children are reused."].join("\n"),
@@ -559,6 +581,7 @@ async function runApply(env: NodeJS.ProcessEnv): Promise<void> {
     }
     throw e
   }
+  await linkChildren(repo, token, n, created)
   // created[] stays in topo (dependency) order for the tasklist and summary.
   const body: string = String(issue.body ?? "")
   if (!body.includes("## Split into")) {
