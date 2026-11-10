@@ -250,8 +250,13 @@ async function postComment(repo: string, n: number, token: string, body: string)
   await gh(`/repos/${repo}/issues/${n}/comments`, token, { method: "POST", body: JSON.stringify({ body }) })
 }
 
-async function findSplitPlan(comments: Array<{ body?: string }>): Promise<SplitPlan | null> {
+export async function findSplitPlan(comments: Array<{ body?: string; user?: { type?: string }; author_association?: string }>): Promise<SplitPlan | null> {
+  // Only trust markers from automation or maintainers: a forged marker in a
+  // random user's comment must not become an approved plan.
+  const trusted = (c: { user?: { type?: string }; author_association?: string }) =>
+    c.user?.type === "Bot" || c.author_association === "OWNER" || c.author_association === "MEMBER"
   for (let i = comments.length - 1; i >= 0; i--) {
+    if (!trusted(comments[i])) continue
     const p = parseSplitPlanMarker(comments[i].body ?? "")
     if (p && p.verdict === "split") return p
   }
@@ -414,22 +419,48 @@ async function runApply(env: NodeJS.ProcessEnv): Promise<void> {
   const v = validatePlan(plan, n)
   if (!v.ok || v.plan.verdict !== "split") throw new Error(`approved plan invalid: ${!v.ok ? (v as any).error : "rejected"}`)
   const parentTitle = String(issue.title ?? "")
-  await ensureLabels(repo, token, ["split-applied", "needs-triage"])
+  await ensureLabels(repo, token, ["split-applied"])
+  // needs-triage is best-effort: some tokens cannot create labels. Sub-issues
+  // are still usable without it (they link back via "Part of #N").
+  await ensureLabels(repo, token, ["needs-triage"]).catch((e) => {
+    console.log(`needs-triage label unavailable, continuing unlabeled: ${String((e as Error)?.message ?? e)}`)
+  })
   const created: Array<{ number: number; title: string }> = []
-  for (const idx of topoOrder(v.plan.subs)) {
-    const s = v.plan.subs[idx]
-    const existing = await findExistingChild(repo, token, s.title, n)
-    if (existing != null) {
-      created.push({ number: existing, title: s.title })
-      console.log(`reuse existing #${existing} for "${s.title}"`)
-      continue
+  try {
+    for (const idx of topoOrder(v.plan.subs)) {
+      const s = v.plan.subs[idx]
+      const existing = await findExistingChild(repo, token, s.title, n)
+      if (existing != null) {
+        created.push({ number: existing, title: s.title })
+        console.log(`reuse existing #${existing} for "${s.title}"`)
+        continue
+      }
+      const body = renderSubIssueBody(s, idx, n, parentTitle)
+      let created_issue: any = null
+      try {
+        created_issue = await gh(`/repos/${repo}/issues`, token, {
+          method: "POST",
+          body: JSON.stringify({ title: s.title, body, labels: ["needs-triage"] }),
+        })
+      } catch (e) {
+        if (!/label/i.test(String((e as Error)?.message ?? e))) throw e
+        console.log(`label attach failed, creating unlabeled: ${String((e as Error)?.message ?? e)}`)
+        created_issue = await gh(`/repos/${repo}/issues`, token, {
+          method: "POST",
+          body: JSON.stringify({ title: s.title, body }),
+        })
+      }
+      created.push({ number: created_issue.number, title: s.title })
     }
-    const body = renderSubIssueBody(s, idx, n, parentTitle)
-    const created_issue = (await gh(`/repos/${repo}/issues`, token, {
-      method: "POST",
-      body: JSON.stringify({ title: s.title, body, labels: ["needs-triage"] }),
-    })) as any
-    created.push({ number: created_issue.number, title: s.title })
+  } catch (e) {
+    // Partial progress must not be silent: human re-runs apply (dedup via title match).
+    if (created.length) {
+      await postComment(
+        repo, n, token,
+        [`Split partially applied before failure (${created.map((c) => `#${c.number}`).join(", ")}):`, String((e as Error)?.message ?? e), "Re-run approve to resume; existing children are reused."].join("\n"),
+      ).catch(() => null)
+    }
+    throw e
   }
   // created[] stays in topo (dependency) order for the tasklist and summary.
   const body: string = String(issue.body ?? "")

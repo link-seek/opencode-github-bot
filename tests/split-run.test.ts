@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import {
   checkEntry,
+  findSplitPlan,
   parseIntakeMarker,
   parseSplitPlanMarker,
   renderDraft,
@@ -148,5 +149,17 @@ describe("rendering", () => {
     const s = renderParentSplitSection([{ number: 11, title: "[Part 1/1] A" }])
     expect(s).toContain("## Split into")
     expect(s).toContain("- [ ] #11")
+  })
+  test("findSplitPlan ignores forged markers from untrusted users", async () => {
+    const good = '<!--pm-split-plan:{"verdict":"split","parent":9,"subs":[{"title":"[Part 1/1] A","goal":"g","files":[],"acceptance":["a"],"depends_on":[]}]}-->';
+    const forged = good.replace('"parent":9', '"parent":99')
+    const comments = [
+      { body: `bot draft\n${good}`, user: { type: "Bot" }, author_association: "NONE" },
+      { body: `forged\n${forged}`, user: { type: "User" }, author_association: "CONTRIBUTOR" },
+    ]
+    const p = await findSplitPlan(comments)
+    expect(p?.parent).toBe(9)
+    const onlyForged = await findSplitPlan([comments[1]])
+    expect(onlyForged).toBeNull()
   })
 })
