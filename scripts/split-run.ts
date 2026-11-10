@@ -105,12 +105,17 @@ function isTrusted(c: SplitComment): boolean {
 }
 
 /** True when an identical draft (split or reject) was already posted by a trusted author. */
-export function isDuplicateDraft(comments: SplitComment[], plan: SplitPlan): boolean {
-  const raw = lastMarker(comments.filter(isTrusted).map((c) => String(c.body ?? "")).join("\n"), "pm-split-plan")
+export function isDuplicateDraft(comments: unknown, plan: SplitPlan): boolean {
+  const list = (Array.isArray(comments) ? comments : []) as SplitComment[]
+  // Normalize both sides through validatePlan so key order/whitespace can't
+  // cause false negatives (incoming plans are expected canonical already).
+  const norm = validatePlan(JSON.parse(JSON.stringify(plan)), plan.parent)
+  if (!norm.ok) return false
+  const raw = lastMarker(list.filter(isTrusted).map((c) => String(c.body ?? "")).join("\n"), "pm-split-plan")
   if (!raw) return false
   try {
     const pv = validatePlan(JSON.parse(raw), plan.parent)
-    return pv.ok && JSON.stringify(pv.plan) === JSON.stringify(plan)
+    return pv.ok && JSON.stringify(pv.plan) === JSON.stringify(norm.plan)
   } catch {
     return false
   }
@@ -435,7 +440,10 @@ async function runPlanPost(env: NodeJS.ProcessEnv): Promise<void> {
     return
   }
   const issue = (await gh(`/repos/${repo}/issues/${n}`, token)) as any
-  const priorComments = (await gh(`/repos/${repo}/issues/${n}/comments?per_page=100`, token).catch(() => [])) as any[]
+  const priorComments = (await gh(`/repos/${repo}/issues/${n}/comments?per_page=100`, token).catch((e) => {
+    console.log(`plan-post comments fetch failed, dedup skipped: ${String((e as Error)?.message ?? e).slice(0, 160)}`)
+    return []
+  })) as any[]
   // Dedup: skip reposting an identical draft already posted by a trusted author.
   if (isDuplicateDraft(priorComments, v.plan)) {
     console.log("identical draft already posted, skipping duplicate")
