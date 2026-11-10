@@ -70,6 +70,35 @@ describe("llm-judge contract", () => {
     const fake = (async () => ({ ok: true, json: async () => ({}) })) as unknown as typeof fetch
     await expect(llmJudge("d", "t", "b", [], fake, { LLM_API_KEY: "x", OPENCODE_MODEL: "   " } as any)).rejects.toThrow("need LLM_JUDGE_MODEL")
   })
+  test("go endpoint gets x-opencode-session header, others do not", async () => {
+    const { llmJudge } = await import("../scripts/llm-judge")
+    const seen: any[] = []
+    const fake = (async (_u: any, init: any) => {
+      seen.push(init.headers)
+      return {
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: '{"repo_fit":0.5,"is_clear":0.5,"type":"bug","size":0.5,"priority":0.5,"duplicate":0}' } }],
+          usage: {},
+        }),
+      }
+    }) as unknown as typeof fetch
+    await llmJudge("d", "t", "b", [], fake, {
+      LLM_API_KEY: "x", OPENCODE_MODEL: "beam-free",
+      LLM_BASE_URL: "https://opencode.ai/inference/go/openai/v1",
+      GITHUB_RUN_ID: "123", GITHUB_RUN_ATTEMPT: "2",
+    } as any)
+    expect(seen[0]["x-opencode-session"]).toBe("gh-123-2")
+    await llmJudge("d", "t", "b", [], fake, {
+      LLM_API_KEY: "x", OPENCODE_MODEL: "beam-free",
+      LLM_BASE_URL: "https://opencode.ai/inference/openai/v1",
+    } as any)
+    expect(seen[1]["x-opencode-session"]).toBeUndefined()
+  })
+    const { llmJudge } = await import("../scripts/llm-judge")
+    const fake = (async () => ({ ok: true, json: async () => ({}) })) as unknown as typeof fetch
+    await expect(llmJudge("d", "t", "b", [], fake, { LLM_API_KEY: "x", OPENCODE_MODEL: "   " } as any)).rejects.toThrow("need LLM_JUDGE_MODEL")
+  })
   test("composite model var: id stripped, explicit base wins", async () => {
     const { llmJudge } = await import("../scripts/llm-judge")
     let seen: any = null

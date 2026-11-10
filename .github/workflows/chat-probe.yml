@@ -1,0 +1,87 @@
+name: chat-probe
+
+on:
+  workflow_dispatch:
+    inputs:
+      chat-model:
+        description: 'Model variable JSON, e.g. {"cli":"opencode-go/beam-free","apiBase":"https://opencode.ai/inference/go/openai/v1"}'
+        required: false
+        default: '{"cli":"opencode-go/beam-free","apiBase":"https://opencode.ai/inference/go/openai/v1"}'
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Live chat call (1 question, negligible cost)
+        env:
+          CHAT_MODEL_INPUT: ${{ inputs.chat-model }}
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+        run: |
+          set -euo pipefail
+          MODEL="${CHAT_MODEL_INPUT:?need chat-model input}"
+          PARSED="$(python3 - "$MODEL" <<'EOF'
+          import json, sys
+          v = sys.argv[1].strip()
+          cli, base = "", ""
+          try:
+              if v.startswith("{"):
+                  o = json.loads(v)
+                  if not isinstance(o, dict):
+                      raise ValueError("model JSON must be an object")
+                  c = o.get("cli")
+                  b = o.get("apiBase")
+                  cli = c.strip() if isinstance(c, str) else ""
+                  base = b.strip() if isinstance(b, str) else ""
+              else:
+                  p = v.split()
+                  cli, base = (p[0] if p else ""), (p[1] if len(p) > 1 else "")
+          except Exception as e:
+              print(f"reject: bad model value: {e}", file=sys.stderr)
+              raise SystemExit(1)
+          mid = cli.rsplit("/", 1)[-1].strip() if cli else ""
+          print(mid)
+          print(base or "https://opencode.ai/inference/openai/v1")
+          EOF
+          )"
+          MODEL_ID="$(printf '%s' "$PARSED" | sed -n '1p')"
+          CHAT_URL="$(printf '%s' "$PARSED" | sed -n '2p')"
+          if [ -z "$MODEL_ID" ]; then echo "reject: empty model id: $MODEL" >&2; exit 1; fi
+          KEY="${OPENCODE_API_KEY:?need secrets.OPENCODE_API_KEY}"
+          # Go subscription endpoints require a session id header.
+          SESSION_HDR=""
+          if [[ "$CHAT_URL" == *"/inference/go/"* ]]; then
+            SESSION_HDR="x-opencode-session: gh-${GITHUB_RUN_ID:-0}-${GITHUB_RUN_ATTEMPT:-0}"
+          fi
+          python3 - "$CHAT_URL" "$KEY" "$MODEL_ID" "$SESSION_HDR" <<'EOF' > /tmp/chat-probe.json
+          import json, sys, urllib.request, urllib.error
+          url, key, model = sys.argv[1], sys.argv[2], sys.argv[3]
+          extra = [a for a in sys.argv[4:] if a]
+          body = json.dumps({
+              "model": model,
+              "messages": [{"role": "user", "content": "reply with exactly: OK"}],
+              "max_tokens": 8,
+          }).encode()
+          headers = {"Content-Type": "application/json",
+                     # opencode.ai sits behind Cloudflare, which bans Python-urllib's
+                     # default UA (403/error 1010). curl UA is verified to pass.
+                     "User-Agent": "curl/8.5.0",
+                     "Authorization": f"Bearer {key}"}
+          for h in extra:
+              k, _, v = h.partition(":")
+              headers[k.strip()] = v.strip()
+          req = urllib.request.Request(url, data=body, headers=headers)
+          try:
+              resp = urllib.request.urlopen(req, timeout=60)
+              print(resp.read().decode(), end="")
+          except urllib.error.HTTPError as e:
+              print(f"HTTP {e.code}: {e.read().decode(errors='replace')[:1000]}", file=sys.stderr)
+              print(f"HTTP {e.code}", end="")
+              raise SystemExit(1)
+          except Exception as e:
+              print(f"REQUEST FAILED: {type(e).__name__}: {e}", file=sys.stderr)
+              print("REQUEST FAILED", end="")
+              raise SystemExit(1)
+          EOF
+          head -c 800 /tmp/chat-probe.json; echo
+          python3 -c "import json; d=json.load(open('/tmp/chat-probe.json')); t=d['choices'][0]['message']['content']; print('reply=',t.strip()[:60]); assert 'OK' in t.upper(), 'probe failed'"
