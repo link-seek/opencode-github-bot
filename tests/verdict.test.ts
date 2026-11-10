@@ -65,6 +65,16 @@ describe("llm-judge contract", () => {
     expect(r.inputTokens).toBe(100)
     expect(r.latencyMs).toBeGreaterThanOrEqual(0)
   })
+  test("whitespace-only model throws (trimmed before check)", async () => {
+    const { llmJudge } = await import("../scripts/llm-judge")
+    const fake = (async () => ({ ok: true, json: async () => ({}) })) as unknown as typeof fetch
+    await expect(llmJudge("d", "t", "b", [], fake, { LLM_API_KEY: "x", OPENCODE_MODEL: "   " } as any)).rejects.toThrow("need LLM_JUDGE_MODEL")
+  })
+  test("unknown provider without base URL throws (no silent gateway)", async () => {
+    const { llmJudge } = await import("../scripts/llm-judge")
+    const fake = (async () => ({ ok: true, json: async () => ({}) })) as unknown as typeof fetch
+    await expect(llmJudge("d", "t", "b", [], fake, { LLM_API_KEY: "x", OPENCODE_MODEL: "custom/m" } as any)).rejects.toThrow("unknown model provider")
+  })
   test("malformed model output throws clear error (no crash)", async () => {
     const { llmJudge } = await import("../scripts/llm-judge")
     const fake = (async () => ({

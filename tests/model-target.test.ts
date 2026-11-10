@@ -34,7 +34,11 @@ describe("apiTargetFor", () => {
     expect(t.baseUrl).toBe("https://fallback.invalid/v1")
     expect(t.model).toBe("my-model")
   })
-  test("unknown provider without fallback -> null base", () => {
+  test("unknown provider without fallback -> null base (caller fails closed)", () => {
     expect(apiTargetFor("custom/my-model").baseUrl).toBeNull()
+  })
+  test("bare id resolves against caller fallback (may be gateway default)", () => {
+    const t = apiTargetFor("beam-free", "https://gw.invalid/v1")
+    expect(t).toEqual({ provider: "", model: "beam-free", baseUrl: "https://gw.invalid/v1" })
   })
 })

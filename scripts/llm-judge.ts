@@ -45,12 +45,14 @@ export async function llmJudge(
   fetchFn: typeof fetch = fetch,
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<JudgeScores> {
-  const rawModel = env.LLM_JUDGE_MODEL || env.OPENCODE_MODEL || "";
+  const rawModel = (env.LLM_JUDGE_MODEL || env.OPENCODE_MODEL || "").trim();
   if (!rawModel) throw new Error("need LLM_JUDGE_MODEL or OPENCODE_MODEL");
-  const target = apiTargetFor(rawModel, env.LLM_BASE_URL || "https://opencode.ai/inference/openai/v1");
-  if (!target.baseUrl) throw new Error(`unknown model provider in ${rawModel} (need LLM_BASE_URL)`);
+  const target = apiTargetFor(rawModel, env.LLM_BASE_URL || "");
+  // Bare ids (no provider) default to the OpenCode gateway; an explicit but
+  // unknown provider fails closed instead of silently hitting the gateway.
+  const baseUrl = target.baseUrl || (!target.provider ? "https://opencode.ai/inference/openai/v1" : "");
+  if (!baseUrl) throw new Error(`unknown model provider in ${rawModel} (need LLM_BASE_URL)`);
   if (!target.model) throw new Error(`empty model id in ${rawModel}`);
-  const baseUrl = target.baseUrl;
   const model = target.model;
   const key = env.LLM_API_KEY || env.OPENCODE_API_KEY || "";
   if (!key) throw new Error("need LLM_API_KEY or OPENCODE_API_KEY");
