@@ -4,10 +4,9 @@
  *  - scores are NORMALIZED to 0-1 (raw score / top level number) before routing;
  *  - score confidences gate automation (low confidence -> human);
  *  - duplicates use one Noul per candidate (same_as_<n>), giving attribution.
- * Single model variable: "<cli-model> <api-base-url>" (see model-target.ts).
- *  - CLI uses the first token as-is.
- *  - API uses the second token as endpoint + id after the last "/".
- * Opencode only. Single token (legacy) = CLI form, endpoint defaults to gateway.
+ * Single model variable, JSON: {"cli":"...","apiBase":"..."} (see model-target.ts).
+ *  - CLI uses `cli` verbatim. API uses `apiBase` + id (`apiId` or after last "/").
+ * Opencode only. Legacy space-separated/bare values still parse.
  * Key: OPENCODE_API_KEY else inputs.llm-api-key. No key -> null (fail-closed).
  */
 import { parseModelVar } from "./model-target"
