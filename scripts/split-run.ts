@@ -77,14 +77,6 @@ export function checkEntry(labels: string[], issueBody: string): EntryOk | Entry
   return { ok: true, marker }
 }
 
-export function findMarkerInComments(comments: Array<{ body?: string }>): IntakeMarker | null {
-  for (let i = comments.length - 1; i >= 0; i--) {
-    const m = parseIntakeMarker(comments[i].body ?? "")
-    if (m) return m
-  }
-  return null
-}
-
 /* ---------------- pure: plan schema ---------------- */
 
 export interface PlanSub {
@@ -108,6 +100,8 @@ export function validatePlan(raw: any, parent: number): { ok: true; plan: SplitP
     if (typeof raw.reason !== "string" || !raw.reason.trim()) return { ok: false, error: "reject needs a reason" }
     if (raw.reason.includes("<!--") || raw.reason.includes("-->"))
       return { ok: false, error: "reject reason must not contain HTML comment markers" }
+    if (raw.parent != null && raw.parent !== parent)
+      return { ok: false, error: `reject plan is for #${JSON.stringify(raw.parent)}, not #${parent}` }
     return { ok: true, plan: { verdict: "reject", parent, subs: [], reason: raw.reason.trim() } }
   }
   if (raw.verdict !== "split") return { ok: false, error: `unknown verdict ${JSON.stringify(raw.verdict)}` }
@@ -122,6 +116,7 @@ export function validatePlan(raw: any, parent: number): { ok: true; plan: SplitP
     const tag = `[Part ${i + 1}/${n}]`
     if (typeof s?.title !== "string" || !s.title.startsWith(tag))
       return { ok: false, error: `subs[${i}].title must start with "${tag}"` }
+    if (/[\r\n]/.test(s.title)) return { ok: false, error: `subs[${i}].title must be single-line` }
     if (typeof s?.goal !== "string" || !s.goal.trim()) return { ok: false, error: `subs[${i}] needs a goal` }
     if (!Array.isArray(s?.files)) return { ok: false, error: `subs[${i}].files must be an array` }
     if (!s.files.every((f: unknown) => typeof f === "string" && (f as string).trim()))
@@ -175,9 +170,19 @@ export function parseSplitPlanMarker(body: string): SplitPlan | null {
   }
 }
 
-export function renderDraft(plan: SplitPlan, parentTitle: string): string {
+/** Untrusted titles must not break markdown structure or the trailing marker. */
+export function sanitizeTitle(t: string): string {
+  return String(t ?? "").replace(/[\r\n]+/g, " ").trim()
+}
+
+function tableCell(t: string): string {
+  return sanitizeTitle(t).replace(/\|/g, "/")
+}
+
+export function renderDraft(plan: SplitPlan, parentTitleRaw: string): string {
+  const parentTitle = sanitizeTitle(parentTitleRaw)
   const rows = plan.subs
-    .map((s, i) => `| ${i + 1} | ${s.title.replace(/^\[Part \d+\/\d+\] /, "")} | ${s.files.join(", ") || "—"} | ${s.depends_on.length ? s.depends_on.map((d) => `Part ${d}`).join(", ") : "无"} |`)
+    .map((s, i) => `| ${i + 1} | ${tableCell(s.title.replace(/^\[Part \d+\/\d+\] /, ""))} | ${tableCell(s.files.join(", ") || "—")} | ${s.depends_on.length ? s.depends_on.map((d) => `Part ${d}`).join(", ") : "无"} |`)
     .join("\n")
   const criteria = plan.subs
     .map((s, i) => `**Part ${i + 1} 验收**：\n${s.acceptance.map((a) => `- [ ] ${a}`).join("\n")}`)
@@ -196,7 +201,8 @@ export function renderDraft(plan: SplitPlan, parentTitle: string): string {
   ].join("\n")
 }
 
-export function renderSubIssueBody(s: PlanSub, _idx: number, parentNum: number, parentTitle: string): string {
+export function renderSubIssueBody(s: PlanSub, _idx: number, parentNum: number, parentTitleRaw: string): string {
+  const parentTitle = sanitizeTitle(parentTitleRaw)
   const deps = s.depends_on.length
     ? s.depends_on.map((d) => `Part ${d}（先合）`).join("、")
     : "无"
@@ -253,12 +259,31 @@ async function postComment(repo: string, n: number, token: string, body: string)
 export async function findSplitPlan(comments: Array<{ body?: string; user?: { type?: string }; author_association?: string }>): Promise<SplitPlan | null> {
   // Only trust markers from automation or maintainers: a forged marker in a
   // random user's comment must not become an approved plan.
+  // Prefer the bot-authored draft; fall back to OWNER/MEMBER-authored markers
+  // (dogfood posts via owner PAT, not a bot token).
+  const trusted = (c: { user?: { type?: string }; author_association?: string }) =>
+    c.user?.type === "Bot" || c.author_association === "OWNER" || c.author_association === "MEMBER"
+  for (let pass = 0; pass < 2; pass++) {
+    for (let i = comments.length - 1; i >= 0; i--) {
+      const c = comments[i]
+      if (!trusted(c)) continue
+      if (pass === 0 && c.user?.type !== "Bot") continue
+      const p = parseSplitPlanMarker(c.body ?? "")
+      if (p && p.verdict === "split") return p
+    }
+  }
+  return null
+}
+
+export function findMarkerInComments(
+  comments: Array<{ body?: string; user?: { type?: string }; author_association?: string }>,
+): IntakeMarker | null {
   const trusted = (c: { user?: { type?: string }; author_association?: string }) =>
     c.user?.type === "Bot" || c.author_association === "OWNER" || c.author_association === "MEMBER"
   for (let i = comments.length - 1; i >= 0; i--) {
     if (!trusted(comments[i])) continue
-    const p = parseSplitPlanMarker(comments[i].body ?? "")
-    if (p && p.verdict === "split") return p
+    const m = parseIntakeMarker(comments[i].body ?? "")
+    if (m) return m
   }
   return null
 }
@@ -290,7 +315,7 @@ async function findExistingChild(repo: string, token: string, title: string, par
   let lastErr: unknown = null
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      const res = (await gh(`/search/issues?q=${q}`, token)) as any
+      const res = (await gh(`/search/issues?q=${q}&per_page=100`, token)) as any
       const items = (res?.items ?? []) as Array<{ number: number; title?: string; body?: string }>
       const norm = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim()
       const hit = items.find((it) => norm(it.title ?? "") === norm(title) && (it.body ?? "").includes(`Part of #${parent}`))
@@ -443,8 +468,11 @@ async function runApply(env: NodeJS.ProcessEnv): Promise<void> {
           body: JSON.stringify({ title: s.title, body, labels: ["needs-triage"] }),
         })
       } catch (e) {
-        if (!/label/i.test(String((e as Error)?.message ?? e))) throw e
-        console.log(`label attach failed, creating unlabeled: ${String((e as Error)?.message ?? e)}`)
+        const msg = String((e as Error)?.message ?? e)
+        // Retry bare only on label validation failures (422 mentioning labels);
+        // anything else (auth, rate limit, abuse) must fail loudly.
+        if (!/ 422[\s:]/.test(msg) || !/label/i.test(msg)) throw e
+        console.log(`label attach failed, creating unlabeled: ${msg.slice(0, 200)}`)
         created_issue = await gh(`/repos/${repo}/issues`, token, {
           method: "POST",
           body: JSON.stringify({ title: s.title, body }),
