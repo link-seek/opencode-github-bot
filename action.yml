@@ -217,13 +217,13 @@ runs:
       shell: bash
       env:
         MODEL: ${{ inputs.model }}
+        REPOSITORY: ${{ github.repository }}
         AGENT_KIND: ${{ inputs.agent-kind }}
         ACP_COMMAND: ${{ inputs.acp-command }}
         GITHUB_TOKEN: ${{ inputs.github-token }}
         MODE: ${{ inputs.mode }}
         ISSUE_NUMBER: ${{ inputs.issue-number }}
         PR_NUMBER: ${{ inputs.pr-number }}
-        MAX_ITERATIONS: ${{ inputs.max-iterations }}
         REQUIRE_EVIDENCE: ${{ inputs.require-evidence }}
         REQUIRE_PINNED_ACTIONS: ${{ inputs.require-pinned-actions }}
         COLLECT_FEEDBACK: ${{ inputs.collect-feedback }}
