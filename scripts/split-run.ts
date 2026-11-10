@@ -555,22 +555,39 @@ async function runApply(env: NodeJS.ProcessEnv): Promise<void> {
         body: JSON.stringify({ body: `${body.trim()}\n\n${renderParentSplitSection(created)}` }),
       })
     } catch (e) {
-      // Best-effort: some tokens cannot edit issues (admin-only PATCH).
-      // Traceability survives via "Part of #N" backlinks + the summary below.
-      console.log(`parent tasklist skipped: ${String((e as Error)?.message ?? e).slice(0, 200)}`)
+      // Best-effort on permission denials (403/404/422: no label-admin, stale refs).
+      // Anything else (network/5xx/auth) still fails loudly.
+      const msg = String((e as Error)?.message ?? e)
+      if (!/:( 403| 404| 422)[\s:]/.test(msg)) throw e
+      console.log(`parent tasklist skipped: ${msg.slice(0, 200)}`)
     }
   }
   await removeLabel(repo, n, token, "split-proposed").catch(() => null)
+  const summaryHead = `Split applied: ${created.map((c) => `#${c.number}`).join(", ")}`
+  try {
+    const prior = await gh(`/repos/${repo}/issues/${n}/comments?per_page=100`, token).catch((): any[] => [])
+    const already = (Array.isArray(prior) ? prior : []).some((c: any) => String(c?.body ?? "").includes(summaryHead))
+    if (!already) {
+      await postComment(
+        repo, n, token,
+        [
+          summaryHead,
+          ...created.map((c) => `- [ ] #${c.number} ${c.title}`),
+          ``,
+          `(Parent tasklist mirrors this list when the token allows issue edits.)`,
+        ].join("\n"),
+      )
+    } else {
+      console.log("identical summary already posted, skipping duplicate")
+    }
+  } catch (e) {
+    // Summary is the fallback traceability path: never let it fail silently.
+    console.log(`summary post failed: ${String((e as Error)?.message ?? e).slice(0, 200)}`)
+    throw e
+  }
+  // Labels last: a failure above must not leave split-applied set while the
+  // summary is missing (that would skip the retry via the early-return gate).
   await applyLabels(repo, n, token, ["split-applied"])
-  await postComment(
-    repo, n, token,
-    [
-      `Split applied: ${created.map((c) => `#${c.number}`).join(", ")}`,
-      ...created.map((c) => `- [ ] #${c.number} ${c.title}`),
-      ``,
-      `(Parent tasklist mirrors this list when the token allows issue edits.)`,
-    ].join("\n"),
-  )
   await appendRecord({ v: 1, ts: new Date().toISOString(), repo, issue: n, phase: "apply", ok: true, children: created.map((c) => c.number) })
 }
 
