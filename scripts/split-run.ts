@@ -440,10 +440,11 @@ async function runPlanPost(env: NodeJS.ProcessEnv): Promise<void> {
     return
   }
   const issue = (await gh(`/repos/${repo}/issues/${n}`, token)) as any
-  const priorComments = (await gh(`/repos/${repo}/issues/${n}/comments?per_page=100`, token).catch((e) => {
+  const rawComments: unknown = await gh(`/repos/${repo}/issues/${n}/comments?per_page=100`, token).catch((e) => {
     console.log(`plan-post comments fetch failed, dedup skipped: ${String((e as Error)?.message ?? e).slice(0, 160)}`)
     return []
-  })) as any[]
+  })
+  const priorComments: SplitComment[] = Array.isArray(rawComments) ? (rawComments as SplitComment[]) : []
   // Dedup: skip reposting an identical draft already posted by a trusted author.
   if (isDuplicateDraft(priorComments, v.plan)) {
     console.log("identical draft already posted, skipping duplicate")
@@ -467,11 +468,13 @@ async function runApply(env: NodeJS.ProcessEnv): Promise<void> {
     console.log("split already applied, nothing to do")
     return
   }
-  if (!labels.includes("split-proposed")) {
-    console.log("no split-proposed label, nothing to do (need human-approved draft first)")
+  const commentsRaw: unknown = await gh(`/repos/${repo}/issues/${n}/comments?per_page=100`, token)
+  const comments: SplitComment[] = Array.isArray(commentsRaw) ? commentsRaw : []
+  const hasDraft = (await findSplitPlan(comments)) != null
+  if (!labels.includes("split-proposed") && !hasDraft) {
+    console.log("no split-proposed label and no approved draft, nothing to do (need human-approved draft first)")
     return
   }
-  const comments = (await gh(`/repos/${repo}/issues/${n}/comments?per_page=100`, token)) as any[]
   const plan = await findSplitPlan(comments)
   if (!plan) {
     console.log("no approved split plan found in comments")
