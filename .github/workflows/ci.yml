@@ -29,7 +29,7 @@ jobs:
         run: |
           export PATH="$HOME/.opencode/bin:$PATH"
           # Single line: multi-line $() breaks the runner's script rendering.
-          CLI_MODEL="$(MODEL="$OPENCODE_MODEL" python3 -c "import json,os; v=os.environ.get('MODEL','').strip(); o=json.loads(v) if v.startswith('{') else None; print(str(o.get('cli','')).strip() if isinstance(o,dict) else (v.split()[0] if v.split() else ''))")"
-          : "${CLI_MODEL:?empty OPENCODE_MODEL}"
+          CLI_MODEL="$(MODEL="$OPENCODE_MODEL" python3 -c "import json,os; v=os.environ.get('MODEL','').strip(); o=json.loads(v) if v.startswith('{') else None; print((str(o.get('cli') or '').strip() if isinstance(o,dict) else ('' if v.startswith('{') else (v.split()[0] if v.split() else ''))))" 2>/dev/null)"
+          : "${CLI_MODEL:?empty OPENCODE_MODEL (check variable JSON)}"
           opencode run --agent github-bot --model "$CLI_MODEL" "What is 2+2? Reply with just the number." | tee /tmp/smoke.log
           grep -q "4" /tmp/smoke.log || { echo "Smoke test failed"; cat /tmp/smoke.log; exit 1; }
