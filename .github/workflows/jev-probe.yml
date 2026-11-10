@@ -48,10 +48,14 @@ jobs:
           MODEL_ID="$(printf '%s' "$PARSED" | sed -n '1p')"
           JEV_URL="$(printf '%s' "$PARSED" | sed -n '2p')"
           if [ -z "$MODEL_ID" ]; then echo "reject: empty model id: $MODEL" >&2; exit 1; fi
-          KEY="${OPENCODE_API_KEY:?need secrets.OPENCODE_API_KEY for probe (free needs key too)}"
-          python3 - "$JEV_URL" "$KEY" "$MODEL_ID" <<'EOF' > /tmp/jev-probe.json
-          import json, sys, urllib.request, urllib.error
-          url, key, model = sys.argv[1], sys.argv[2], sys.argv[3]
+          : "${OPENCODE_API_KEY:?need secrets.OPENCODE_API_KEY for probe (free needs key too)}"
+          python3 - "$JEV_URL" "$MODEL_ID" <<'EOF' > /tmp/jev-probe.json
+          import json, os, sys, urllib.request, urllib.error
+          url, model = sys.argv[1], sys.argv[2]
+          key = os.environ.get("OPENCODE_API_KEY", "")
+          if not key:
+              print("missing OPENCODE_API_KEY", file=sys.stderr)
+              raise SystemExit(1)
           body = json.dumps({
               "model": model,
               "state": "probe: the sky is blue",

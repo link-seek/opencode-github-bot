@@ -54,17 +54,23 @@ export async function llmJudge(
   const model = v.apiId;
   const key = env.LLM_API_KEY || env.OPENCODE_API_KEY || "";
   if (!key) throw new Error("need LLM_API_KEY or OPENCODE_API_KEY");
+  // Go subscription endpoints (/inference/go/...) require a session id header.
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${key}`,
+    "Content-Type": "application/json",
+    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36",
+  };
+  if (baseUrl.includes("/inference/go/")) {
+    const run = env.GITHUB_RUN_ID ? `gh-${env.GITHUB_RUN_ID}-${env.GITHUB_RUN_ATTEMPT || "0"}` : `local-${Date.now()}`;
+    headers["x-opencode-session"] = run;
+  }
   const state = [`NEW: ${title}\n${body.slice(0, 1500)}`,
     ...candidates.slice(0, 10).map((c) => `#${c.number}: ${c.title} — ${c.summary}`)].join("\n");
   const prompt = PROMPT.replace("__ROLE__", role).replace("__STATE__", state);
   const t0 = Date.now();
   const res = await fetchFn(`${baseUrl}/chat/completions`, {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${key}`,
-      "Content-Type": "application/json",
-      "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36",
-    },
+    headers,
     body: JSON.stringify({
       model,
       messages: [{ role: "user", content: prompt }],
