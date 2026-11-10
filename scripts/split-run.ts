@@ -557,9 +557,6 @@ async function runApply(env: NodeJS.ProcessEnv): Promise<void> {
     }
     throw e
   }
-  // created[] stays in topo (dependency) order for the tasklist and summary.
-  const body: string = String(issue.body ?? "")
-  if (!body.includes("## Split into")) {
     try {
       await gh(`/repos/${repo}/issues/${n}`, token, {
         method: "PATCH",
@@ -567,12 +564,11 @@ async function runApply(env: NodeJS.ProcessEnv): Promise<void> {
       })
     } catch (e) {
       // Best-effort on permission denials (parsed status, not body text).
-      // Anything else (network/5xx/auth) still fails loudly.
+      // Validation errors (422) still fail loudly — a bad body must be fixed, not skipped.
       const st = ghStatus(e)
-      if (st !== 403 && st !== 404 && st !== 422) throw e
+      if (st !== 403 && st !== 404) throw e
       console.log(`parent tasklist skipped (HTTP ${String(st)}): ${String((e as Error)?.message ?? e).slice(0, 160)}`)
     }
-  }
   const summaryHead = `Split applied: ${created.map((c) => `#${c.number}`).join(", ")}`
   try {
     const prior = await listComments(repo, n, token, "apply summary dedup")
