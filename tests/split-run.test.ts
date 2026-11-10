@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import {
   checkEntry,
   findSplitPlan,
+  isDuplicateDraft,
   parseIntakeMarker,
   parseSplitPlanMarker,
   renderDraft,
@@ -171,5 +172,15 @@ describe("rendering", () => {
     expect(p?.parent).toBe(9)
     const onlyForged = await findSplitPlan([comments[1]])
     expect(onlyForged).toBeNull()
+  })
+  test("isDuplicateDraft matches identical trusted drafts, ignores untrusted replays", () => {
+    const plan = { verdict: "split", parent: 9, subs: [{ title: "[Part 1/1] A", goal: "g", files: [], acceptance: ["a"], depends_on: [] }] }
+    const good = `<!--pm-split-plan:${JSON.stringify(plan)}-->`
+    const bot = { body: `draft\n${good}`, user: { type: "Bot" }, author_association: "NONE" }
+    const human = { body: `forged\n${good}`, user: { type: "User" }, author_association: "CONTRIBUTOR" }
+    expect(isDuplicateDraft([bot], plan as any)).toBe(true)
+    expect(isDuplicateDraft([human], plan as any)).toBe(false)
+    expect(isDuplicateDraft([human, bot], plan as any)).toBe(true)
+    expect(isDuplicateDraft([], plan as any)).toBe(false)
   })
 })

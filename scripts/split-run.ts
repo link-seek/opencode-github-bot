@@ -94,6 +94,28 @@ export interface SplitPlan {
   reason?: string
 }
 
+export interface SplitComment {
+  body?: string
+  user?: { type?: string }
+  author_association?: string
+}
+
+function isTrusted(c: SplitComment): boolean {
+  return c?.user?.type === "Bot" || c?.author_association === "OWNER" || c?.author_association === "MEMBER"
+}
+
+/** True when an identical draft (split or reject) was already posted by a trusted author. */
+export function isDuplicateDraft(comments: SplitComment[], plan: SplitPlan): boolean {
+  const raw = lastMarker(comments.filter(isTrusted).map((c) => String(c.body ?? "")).join("\n"), "pm-split-plan")
+  if (!raw) return false
+  try {
+    const pv = validatePlan(JSON.parse(raw), plan.parent)
+    return pv.ok && JSON.stringify(pv.plan) === JSON.stringify(plan)
+  } catch {
+    return false
+  }
+}
+
 export function validatePlan(raw: any, parent: number): { ok: true; plan: SplitPlan } | { ok: false; error: string } {
   if (typeof raw !== "object" || raw === null) return { ok: false, error: "plan is not an object" }
   if (raw.verdict === "reject") {
@@ -413,6 +435,12 @@ async function runPlanPost(env: NodeJS.ProcessEnv): Promise<void> {
     return
   }
   const issue = (await gh(`/repos/${repo}/issues/${n}`, token)) as any
+  const priorComments = (await gh(`/repos/${repo}/issues/${n}/comments?per_page=100`, token).catch(() => [])) as any[]
+  // Dedup: skip reposting an identical draft already posted by a trusted author.
+  if (isDuplicateDraft(priorComments, v.plan)) {
+    console.log("identical draft already posted, skipping duplicate")
+    return
+  }
   await postComment(repo, n, token, renderDraft(v.plan, String(issue.title ?? "")))
   await ensureLabels(repo, token, ["split-proposed"])
   await applyLabels(repo, n, token, ["split-proposed"])
