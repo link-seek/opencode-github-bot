@@ -66,6 +66,10 @@ export function hiddenMarker(payload: object): string {
   return `<!--pm-intake:${JSON.stringify(payload)}-->`
 }
 
+export function isPretriagedChild(title: string, body: string): boolean {
+  return /Part of #\d+/.test(`${title}\n${body}`)
+}
+
 export async function runIntake(env: NodeJS.ProcessEnv = process.env): Promise<RouteResult> {
   const token = env.GITHUB_TOKEN ?? ""
   const repo = env.GITHUB_REPOSITORY ?? ""
@@ -75,6 +79,13 @@ export async function runIntake(env: NodeJS.ProcessEnv = process.env): Promise<R
   const issue = (await gh(`/repos/${repo}/issues/${issueNumber}`, token)) as any
   const title: string = issue.title ?? ""
   const body: string = issue.body ?? ""
+  // Pre-triaged children (created by split-apply) skip intake: they carry
+  // their classification in "Part of #N" and re-triaging risks flip-flop.
+  if (isPretriagedChild(title, body)) {
+    console.log("skip: pre-triaged child issue (Part of #N)")
+    await appendRecord({ v: 1, ts: new Date().toISOString(), repo, issue: issueNumber, phase: "intake", ok: true, decision: "skip-child" })
+    return { decision: "ready", labels: [] }
+  }
 
   // 1. role (fail-closed -> needs-human)
   let roleText = ""

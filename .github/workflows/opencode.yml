@@ -6,7 +6,7 @@ on:
   pull_request_review_comment:
     types: [created]
   issues:
-    types: [assigned]
+    types: [assigned, opened]
   workflow_dispatch:
     inputs:
       issue-number:
@@ -15,6 +15,31 @@ on:
         type: string
 
 jobs:
+  triage:
+    # New human issues get auto-triaged on open. Bot-created sub-issues
+    # ("Part of #N") are pre-triaged and skipped inside intake-run.
+    if: github.event_name == 'issues' && github.event.action == 'opened'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          token: ${{ secrets.AGENT_GITHUB_TOKEN }}
+      - name: Run intake triage
+        uses: ./
+        with:
+          model: ${{ vars.OPENCODE_MODEL }}
+          llm-api-key: ${{ secrets.OPENCODE_API_KEY }}
+          github-token: ${{ secrets.AGENT_GITHUB_TOKEN }}
+          mode: intake
+          issue-number: ${{ github.event.issue.number }}
+          recall-mode: keyword
+          collect-feedback: "false"
+
   opencode:
     if: |
       ((github.event_name == 'issue_comment' || github.event_name == 'pull_request_review_comment') &&

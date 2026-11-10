@@ -559,6 +559,14 @@ async function runApply(env: NodeJS.ProcessEnv): Promise<void> {
     }
     throw e
   }
+  // Native sub-issue links (best-effort; the markdown tasklist below is the
+  // guaranteed fallback). Runs after creation so partial applies still link.
+  for (const c of created) {
+    await gh(`/repos/${repo}/issues/${n}/sub_issues`, token, {
+      method: "POST",
+      body: JSON.stringify({ sub_issue_id: c.number }),
+    }).catch((e) => console.log(`sub-issue link skipped for #${c.number}: ${String((e as Error)?.message ?? e).slice(0, 160)}`))
+  }
   // created[] stays in topo (dependency) order for the tasklist and summary.
   const body: string = String(issue.body ?? "")
   if (!body.includes("## Split into")) {

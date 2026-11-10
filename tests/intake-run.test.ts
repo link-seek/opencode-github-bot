@@ -1,5 +1,13 @@
 import { describe, expect, test } from "bun:test"
-import { hitHardWords, visibleComment, hiddenMarker } from "../scripts/intake-run"
+import { hitHardWords, isPretriagedChild, visibleComment, hiddenMarker } from "../scripts/intake-run"
+
+describe("isPretriagedChild", () => {
+  test("matches Part of #N in title or body", () => {
+    expect(isPretriagedChild("[Part 1/2] A", "x")).toBe(false)
+    expect(isPretriagedChild("t", "Part of #46: foo")).toBe(true)
+    expect(isPretriagedChild("Part of #7", "")).toBe(true)
+  })
+})
 
 describe("hitHardWords", () => {
   test("matches case-insensitive", () => {
