@@ -288,8 +288,14 @@ export async function appendRecord(row: Record<string, unknown>): Promise<void> 
 }
 
 async function applyLabels(repo: string, n: number, token: string, labels: string[]) {
+  // Best-effort: some tokens cannot attach labels (403). The triage comment
+  // carries the machine-readable verdict; labels are advisory.
   if (!labels.length) return
-  await gh(`/repos/${repo}/issues/${n}/labels`, token, { method: "POST", body: JSON.stringify({ labels }) })
+  try {
+    await gh(`/repos/${repo}/issues/${n}/labels`, token, { method: "POST", body: JSON.stringify({ labels }) })
+  } catch (e) {
+    console.log(`applyLabels skipped (${labels.join(",")}): ${String((e as Error)?.message ?? e).slice(0, 160)}`)
+  }
 }
 
 async function postComment(repo: string, n: number, token: string, body: string) {
