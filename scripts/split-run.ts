@@ -366,6 +366,26 @@ async function listComments(repo: string, n: number, token: string, why: string)
     return []
   }
 }
+/* Best-effort native sub-issue links. Logs linked/skipped counts. */
+async function linkChildren(
+  repo: string,
+  token: string,
+  parent: number,
+  children: Array<{ number: number }>,
+): Promise<void> {
+  let linked = 0
+  for (const c of children) {
+    await gh(`/repos/${repo}/issues/${parent}/sub_issues`, token, {
+      method: "POST",
+      body: JSON.stringify({ sub_issue_id: c.number }),
+    }).then(
+      () => { linked++ },
+      (e: unknown) => console.log(`sub-issue link skipped for #${c.number}: ${String((e as Error)?.message ?? e).slice(0, 160)}`),
+    )
+  }
+  console.log(`sub-issue links: ${linked}/${children.length} ok`)
+}
+
 async function findExistingChild(repo: string, token: string, title: string, parent: number): Promise<number | null> {
   // Idempotency: reuse an open issue with the same title that already points at the parent.
   // Title is matched client-side (never interpolated into the search query).
@@ -552,6 +572,7 @@ async function runApply(env: NodeJS.ProcessEnv): Promise<void> {
   } catch (e) {
     // Partial progress must not be silent: human re-runs apply (dedup via title match).
     if (created.length) {
+      await linkChildren(repo, token, n, created)
       await postComment(
         repo, n, token,
         [`Split partially applied before failure (${created.map((c) => `#${c.number}`).join(", ")}):`, String((e as Error)?.message ?? e), "Re-run approve to resume; existing children are reused."].join("\n"),
@@ -559,14 +580,7 @@ async function runApply(env: NodeJS.ProcessEnv): Promise<void> {
     }
     throw e
   }
-  // Native sub-issue links (best-effort; the markdown tasklist below is the
-  // guaranteed fallback). Runs after creation so partial applies still link.
-  for (const c of created) {
-    await gh(`/repos/${repo}/issues/${n}/sub_issues`, token, {
-      method: "POST",
-      body: JSON.stringify({ sub_issue_id: c.number }),
-    }).catch((e) => console.log(`sub-issue link skipped for #${c.number}: ${String((e as Error)?.message ?? e).slice(0, 160)}`))
-  }
+  await linkChildren(repo, token, n, created)
   // created[] stays in topo (dependency) order for the tasklist and summary.
   const body: string = String(issue.body ?? "")
   if (!body.includes("## Split into")) {

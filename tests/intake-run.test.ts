@@ -2,10 +2,16 @@ import { describe, expect, test } from "bun:test"
 import { hitHardWords, isPretriagedChild, visibleComment, hiddenMarker } from "../scripts/intake-run"
 
 describe("isPretriagedChild", () => {
-  test("matches Part of #N in title or body", () => {
-    expect(isPretriagedChild("[Part 1/2] A", "x")).toBe(false)
-    expect(isPretriagedChild("t", "Part of #46: foo")).toBe(true)
-    expect(isPretriagedChild("Part of #7", "")).toBe(true)
+  const marker = "<!--pm-split-part:46-->"
+  const bot = { type: "Bot", association: "NONE" }
+  const owner = { type: "User", association: "OWNER" }
+  const stranger = { type: "User", association: "CONTRIBUTOR" }
+  test("requires marker AND trusted author", () => {
+    expect(isPretriagedChild("t", `x\n${marker}`, bot)).toBe(true)
+    expect(isPretriagedChild("t", `x\n${marker}`, owner)).toBe(true)
+    expect(isPretriagedChild("t", "Part of #46: foo", bot)).toBe(false)
+    expect(isPretriagedChild("t", `x\n${marker}`, stranger)).toBe(false)
+    expect(isPretriagedChild("t", "plain", bot)).toBe(false)
   })
 })
 

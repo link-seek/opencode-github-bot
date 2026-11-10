@@ -66,8 +66,15 @@ export function hiddenMarker(payload: object): string {
   return `<!--pm-intake:${JSON.stringify(payload)}-->`
 }
 
-export function isPretriagedChild(title: string, body: string): boolean {
-  return /Part of #\d+/.test(`${title}\n${body}`)
+export function isPretriagedChild(
+  _title: string,
+  body: string,
+  author?: { type?: string; association?: string },
+): boolean {
+  // BOTH required: the bot-owned hidden marker AND a trusted author.
+  // Plain "Part of #N" text alone is spoofable by any issue author.
+  const trusted = author?.type === "Bot" || author?.association === "OWNER" || author?.association === "MEMBER"
+  return !!trusted && /<!--pm-split-part:\d+-->/.test(body ?? "")
 }
 
 export async function runIntake(env: NodeJS.ProcessEnv = process.env): Promise<RouteResult> {
@@ -79,10 +86,16 @@ export async function runIntake(env: NodeJS.ProcessEnv = process.env): Promise<R
   const issue = (await gh(`/repos/${repo}/issues/${issueNumber}`, token)) as any
   const title: string = issue.title ?? ""
   const body: string = issue.body ?? ""
-  // Pre-triaged children (created by split-apply) skip intake: they carry
-  // their classification in "Part of #N" and re-triaging risks flip-flop.
-  if (isPretriagedChild(title, body)) {
-    console.log("skip: pre-triaged child issue (Part of #N)")
+  // Pre-triaged children (created by split-apply) skip intake: they carry the
+  // hidden bot-owned marker and re-triaging risks flip-flop. Plain-text
+  // "Part of #N" alone is NOT enough (any author could write it).
+  if (
+    isPretriagedChild(title, body, {
+      type: (issue.user as any)?.type,
+      association: (issue as any).author_association,
+    })
+  ) {
+    console.log("skip: pre-triaged child issue (trusted split marker)")
     await appendRecord({ v: 1, ts: new Date().toISOString(), repo, issue: issueNumber, phase: "intake", ok: true, decision: "skip-child" })
     return { decision: "ready", labels: [] }
   }
