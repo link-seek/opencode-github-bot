@@ -244,15 +244,13 @@ async function appendRecord(row: Record<string, unknown>): Promise<void> {
 }
 
 async function applyLabels(repo: string, n: number, token: string, labels: string[]) {
-  // Best-effort: labels are signals, comments carry the state. A 422 (unknown
-  // label, no label-admin) warns instead of aborting the whole triage run.
+  // Fully best-effort: labels are signals, comments carry the state. Any
+  // failure (unknown label, no label-admin/404, rate limit) warns and continues.
   if (!labels.length) return
   try {
     await gh(`/repos/${repo}/issues/${n}/labels`, token, { method: "POST", body: JSON.stringify({ labels }) })
   } catch (e) {
-    const msg = String((e as Error)?.message ?? e)
-    if (!/ 422[\s:]/.test(msg)) throw e
-    console.log(`applyLabels skipped (${labels.join(",")}): ${msg.slice(0, 200)}`)
+    console.log(`applyLabels skipped (${labels.join(",")}): ${String((e as Error)?.message ?? e).slice(0, 200)}`)
   }
 }
 
@@ -424,10 +422,17 @@ async function runPlanPost(env: NodeJS.ProcessEnv): Promise<void> {
   }
   const issue = (await gh(`/repos/${repo}/issues/${n}`, token)) as any
   const priorComments = (await gh(`/repos/${repo}/issues/${n}/comments?per_page=100`, token).catch(() => [])) as any[]
-  const prior = await findSplitPlan(priorComments)
-  if (prior && JSON.stringify(prior) === JSON.stringify({ ...v.plan })) {
-    console.log("identical draft already posted, skipping duplicate")
-    return
+  // Dedup: skip reposting an identical draft (split or reject). Both sides go
+  // through validatePlan so key order/whitespace can't cause false duplicates.
+  const priorRaw = lastMarker(priorComments.map((c: any) => String(c.body ?? "")).join("\n"), "pm-split-plan")
+  if (priorRaw) {
+    try {
+      const pv = validatePlan(JSON.parse(priorRaw), n)
+      if (pv.ok && JSON.stringify(pv.plan) === JSON.stringify(v.plan)) {
+        console.log("identical draft already posted, skipping duplicate")
+        return
+      }
+    } catch { /* fall through and post */ }
   }
   await postComment(repo, n, token, renderDraft(v.plan, String(issue.title ?? "")))
   await ensureLabels(repo, token, ["split-proposed"])
@@ -462,11 +467,8 @@ async function runApply(env: NodeJS.ProcessEnv): Promise<void> {
   if (!v.ok || v.plan.verdict !== "split") throw new Error(`approved plan invalid: ${!v.ok ? (v as any).error : "rejected"}`)
   const parentTitle = String(issue.title ?? "")
   await ensureLabels(repo, token, ["split-applied"])
-  // needs-triage is best-effort: some tokens cannot create labels. Sub-issues
-  // are still usable without it (they link back via "Part of #N").
-  await ensureLabels(repo, token, ["needs-triage"]).catch((e) => {
-    console.log(`needs-triage label unavailable, continuing unlabeled: ${String((e as Error)?.message ?? e)}`)
-  })
+  // needs-triage is best-effort (ensureLabels already warns instead of throwing).
+  await ensureLabels(repo, token, ["needs-triage"])
   const created: Array<{ number: number; title: string }> = []
   try {
     for (const idx of topoOrder(v.plan.subs)) {
