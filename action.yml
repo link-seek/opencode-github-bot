@@ -20,7 +20,7 @@ inputs:
     description: "GitHub token for API access (required)"
     required: true
   mode:
-    description: "review | fix-issue | intake | verdict"
+    description: "review | fix-issue | intake | verdict | split-plan | split-apply"
     required: false
     default: "review"
   issue-number:
@@ -197,6 +197,18 @@ runs:
         } > .opencode/issue-context.md
         echo "Context written: $(wc -c < .opencode/issue-context.md) bytes"
 
+    - name: Gather split context
+      if: inputs.mode == 'split-plan'
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        ISSUE_NUMBER: ${{ inputs.issue-number }}
+        SPLIT_ACTION: plan-pre
+      run: |
+        if ! command -v bun >/dev/null 2>&1; then curl -fsSL https://bun.sh/install | bash; export PATH="$HOME/.bun/bin:$PATH"; fi
+        bun "${{ steps.pkgsrc.outputs.dir }}/scripts/split-run.ts"
+
     - name: Run OpenCode v2
       shell: bash
       env:
@@ -226,8 +238,31 @@ runs:
         if [ -n "${REVIEW_PROMPT}" ]; then
           opencode run --agent github-bot --model "${CLI_MODEL}" "Mode: ${MODE}. Repository: ${REPOSITORY}. PR number: ${PR_NUMBER}. Issue number: ${ISSUE_NUMBER}. Read .opencode/pr-context.md for full context. Review prompt: ${REVIEW_PROMPT}"
         else
-          opencode run --agent github-bot --model "${CLI_MODEL}" "Mode: ${MODE}. Repository: ${REPOSITORY}. PR number: ${PR_NUMBER}. Issue number: ${ISSUE_NUMBER}. If mode is review, read .opencode/pr-context.md and use the pr-review skill. If mode is fix-issue, read .opencode/issue-context.md and use the issue-fix skill."
+          opencode run --agent github-bot --model "${CLI_MODEL}" "Mode: ${MODE}. Repository: ${REPOSITORY}. PR number: ${PR_NUMBER}. Issue number: ${ISSUE_NUMBER}. If mode is review, read .opencode/pr-context.md and use the pr-review skill. If mode is fix-issue, read .opencode/issue-context.md and use the issue-fix skill. If mode is split-plan, read .opencode/split-context.md and use the pm-split skill. Write pm-split-plan.json in the current directory. Do NOT comment or create issues."
         fi
+    - name: Validate split plan and publish draft
+      if: inputs.mode == 'split-plan'
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        ISSUE_NUMBER: ${{ inputs.issue-number }}
+        SPLIT_ACTION: plan-post
+      run: |
+        if ! command -v bun >/dev/null 2>&1; then curl -fsSL https://bun.sh/install | bash; export PATH="$HOME/.bun/bin:$PATH"; fi
+        bun "${{ steps.pkgsrc.outputs.dir }}/scripts/split-run.ts"
+        rm -f pm-split-plan.json .opencode/split-context.md
+    - name: Apply approved split plan
+      if: inputs.mode == 'split-apply'
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        ISSUE_NUMBER: ${{ inputs.issue-number }}
+        SPLIT_ACTION: apply
+      run: |
+        if ! command -v bun >/dev/null 2>&1; then curl -fsSL https://bun.sh/install | bash; export PATH="$HOME/.bun/bin:$PATH"; fi
+        bun "${{ steps.pkgsrc.outputs.dir }}/scripts/split-run.ts"
     - name: Run intake triage (no-LLM except Jev)
       if: inputs.mode == 'intake'
       shell: bash
