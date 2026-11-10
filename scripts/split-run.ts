@@ -94,6 +94,33 @@ export interface SplitPlan {
   reason?: string
 }
 
+export interface SplitComment {
+  body?: string
+  user?: { type?: string }
+  author_association?: string
+}
+
+function isTrusted(c: SplitComment): boolean {
+  return c?.user?.type === "Bot" || c?.author_association === "OWNER" || c?.author_association === "MEMBER"
+}
+
+/** True when an identical draft (split or reject) was already posted by a trusted author. */
+export function isDuplicateDraft(comments: unknown, plan: SplitPlan): boolean {
+  try {
+    const list: SplitComment[] = Array.isArray(comments) ? (comments as SplitComment[]) : []
+    // Normalize both sides through validatePlan so key order/whitespace can't
+    // cause false negatives (incoming plans are expected canonical already).
+    const norm = validatePlan(JSON.parse(JSON.stringify(plan)), plan.parent)
+    if (!norm.ok) return false
+    const raw = lastMarker(list.filter(isTrusted).map((c) => String(c.body ?? "")).join("\n"), "pm-split-plan")
+    if (!raw) return false
+    const pv = validatePlan(JSON.parse(raw), plan.parent)
+    return pv.ok && JSON.stringify(pv.plan) === JSON.stringify(norm.plan)
+  } catch {
+    return false
+  }
+}
+
 export function validatePlan(raw: any, parent: number): { ok: true; plan: SplitPlan } | { ok: false; error: string } {
   if (typeof raw !== "object" || raw === null) return { ok: false, error: "plan is not an object" }
   if (raw.verdict === "reject") {
@@ -413,6 +440,16 @@ async function runPlanPost(env: NodeJS.ProcessEnv): Promise<void> {
     return
   }
   const issue = (await gh(`/repos/${repo}/issues/${n}`, token)) as any
+  const rawComments: unknown = await gh(`/repos/${repo}/issues/${n}/comments?per_page=100`, token).catch((e) => {
+    console.log(`plan-post comments fetch failed, dedup skipped: ${String((e as Error)?.message ?? e).slice(0, 160)}`)
+    return []
+  })
+  const priorComments: SplitComment[] = Array.isArray(rawComments) ? (rawComments as SplitComment[]) : []
+  // Dedup: skip reposting an identical draft already posted by a trusted author.
+  if (isDuplicateDraft(priorComments, v.plan)) {
+    console.log("identical draft already posted, skipping duplicate")
+    return
+  }
   await postComment(repo, n, token, renderDraft(v.plan, String(issue.title ?? "")))
   await ensureLabels(repo, token, ["split-proposed"])
   await applyLabels(repo, n, token, ["split-proposed"])
@@ -431,11 +468,16 @@ async function runApply(env: NodeJS.ProcessEnv): Promise<void> {
     console.log("split already applied, nothing to do")
     return
   }
-  if (!labels.includes("split-proposed")) {
-    console.log("no split-proposed label, nothing to do (need human-approved draft first)")
+  const commentsRaw: unknown = await gh(`/repos/${repo}/issues/${n}/comments?per_page=100`, token).catch((e) => {
+    console.log(`apply comments fetch failed, proceeding without dedup: ${String((e as Error)?.message ?? e).slice(0, 160)}`)
+    return []
+  })
+  const comments: SplitComment[] = Array.isArray(commentsRaw) ? (commentsRaw as SplitComment[]) : []
+  const hasDraft = (await findSplitPlan(comments)) != null
+  if (!labels.includes("split-proposed") && !hasDraft) {
+    console.log("no split-proposed label and no approved draft, nothing to do (need human-approved draft first)")
     return
   }
-  const comments = (await gh(`/repos/${repo}/issues/${n}/comments?per_page=100`, token)) as any[]
   const plan = await findSplitPlan(comments)
   if (!plan) {
     console.log("no approved split plan found in comments")
