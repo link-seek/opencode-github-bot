@@ -95,9 +95,22 @@ export async function runIntake(env: NodeJS.ProcessEnv = process.env): Promise<R
       association: (issue as any).author_association,
     })
   ) {
-    console.log("skip: pre-triaged child issue (trusted split marker)")
-    await appendRecord({ v: 1, ts: new Date().toISOString(), repo, issue: issueNumber, phase: "intake", ok: true, decision: "skip-child" })
-    return { decision: "ready", labels: [] }
+    // Cross-check the parent side: the parent must carry the matching approved
+    // split plan. Otherwise this is a forged marker and the issue gets triaged.
+    const parentNum = Number((body.match(/Part of #(\d+)/) ?? [])[1] || 0)
+    let parentOk = false
+    if (parentNum > 0) {
+      const pbody: string = String(((await gh(`/repos/${repo}/issues/${parentNum}`, token).catch(() => null)) as any)?.body ?? "")
+      const pcomments = (await gh(`/repos/${repo}/issues/${parentNum}/comments?per_page=100`, token).catch(() => []) as unknown as Array<{ body?: string }>)
+      parentOk = /<!--pm-split-plan:/.test(pbody) || (Array.isArray(pcomments) ? pcomments : []).some((c) => /<!--pm-split-plan:/.test(String(c?.body ?? "")))
+    }
+    if (!parentOk) {
+      console.log(`skip-child denied: no approved split plan found on parent #${parentNum}, triaging normally`)
+    } else {
+      console.log("skip: pre-triaged child issue (trusted split marker, parent plan verified)")
+      await appendRecord({ v: 1, ts: new Date().toISOString(), repo, issue: issueNumber, phase: "intake", ok: true, decision: "skip-child" })
+      return { decision: "ready", labels: [] }
+    }
   }
 
   // 1. role (fail-closed -> needs-human)
