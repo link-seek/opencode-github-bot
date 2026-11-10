@@ -244,8 +244,16 @@ async function appendRecord(row: Record<string, unknown>): Promise<void> {
 }
 
 async function applyLabels(repo: string, n: number, token: string, labels: string[]) {
+  // Best-effort: labels are signals, comments carry the state. A 422 (unknown
+  // label, no label-admin) warns instead of aborting the whole triage run.
   if (!labels.length) return
-  await gh(`/repos/${repo}/issues/${n}/labels`, token, { method: "POST", body: JSON.stringify({ labels }) })
+  try {
+    await gh(`/repos/${repo}/issues/${n}/labels`, token, { method: "POST", body: JSON.stringify({ labels }) })
+  } catch (e) {
+    const msg = String((e as Error)?.message ?? e)
+    if (!/ 422[\s:]/.test(msg)) throw e
+    console.log(`applyLabels skipped (${labels.join(",")}): ${msg.slice(0, 200)}`)
+  }
 }
 
 async function removeLabel(repo: string, n: number, token: string, label: string) {
@@ -294,14 +302,16 @@ const SPLIT_LABELS: Record<string, string> = {
   "needs-triage": "ededed",
 }
 
-/** Labels must exist before use (422 otherwise). Idempotent: ignores already-exists only. */
+/** Best-effort label bootstrap: missing/foreign labels must never block triage.
+ * State lives in comments; labels are advisory signals. Warn and continue. */
 async function ensureLabels(repo: string, token: string, names: string[]) {
   for (const name of names) {
     await gh(`/repos/${repo}/labels`, token, {
       method: "POST",
       body: JSON.stringify({ name, color: SPLIT_LABELS[name] ?? "ededed" }),
     }).catch((e) => {
-      if (!String((e as Error)?.message ?? e).includes("already_exists")) throw e
+      const msg = String((e as Error)?.message ?? e)
+      if (!msg.includes("already_exists")) console.log(`ensureLabels skipped ${name}: ${msg.slice(0, 160)}`)
     })
   }
 }
@@ -413,6 +423,12 @@ async function runPlanPost(env: NodeJS.ProcessEnv): Promise<void> {
     return
   }
   const issue = (await gh(`/repos/${repo}/issues/${n}`, token)) as any
+  const priorComments = (await gh(`/repos/${repo}/issues/${n}/comments?per_page=100`, token).catch(() => [])) as any[]
+  const prior = await findSplitPlan(priorComments)
+  if (prior && JSON.stringify(prior) === JSON.stringify({ ...v.plan })) {
+    console.log("identical draft already posted, skipping duplicate")
+    return
+  }
   await postComment(repo, n, token, renderDraft(v.plan, String(issue.title ?? "")))
   await ensureLabels(repo, token, ["split-proposed"])
   await applyLabels(repo, n, token, ["split-proposed"])
@@ -431,11 +447,12 @@ async function runApply(env: NodeJS.ProcessEnv): Promise<void> {
     console.log("split already applied, nothing to do")
     return
   }
-  if (!labels.includes("split-proposed")) {
-    console.log("no split-proposed label, nothing to do (need human-approved draft first)")
+  const comments = (await gh(`/repos/${repo}/issues/${n}/comments?per_page=100`, token).catch(() => [])) as any[]
+  const hasDraft = (await findSplitPlan(comments)) != null
+  if (!labels.includes("split-proposed") && !hasDraft) {
+    console.log("no split-proposed label and no approved draft, nothing to do (need human-approved draft first)")
     return
   }
-  const comments = (await gh(`/repos/${repo}/issues/${n}/comments?per_page=100`, token)) as any[]
   const plan = await findSplitPlan(comments)
   if (!plan) {
     console.log("no approved split plan found in comments")
