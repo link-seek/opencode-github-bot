@@ -20,13 +20,15 @@ export function parseModelVar(raw: string): ModelVar {
   if (!t) return { cli: "", apiBase: "", apiId: "" }
   if (t.startsWith("{")) {
     try {
-      const o = JSON.parse(t) as { cli?: unknown; apiBase?: unknown; apiId?: unknown }
-      const cli = typeof o.cli === "string" ? o.cli.trim() : ""
+      const o: unknown = JSON.parse(t)
+      if (typeof o !== "object" || o === null) return { cli: "", apiBase: "", apiId: "" }
+      const rec = o as Record<string, unknown>
+      const cli = typeof rec.cli === "string" ? rec.cli.trim() : ""
       if (!cli) return { cli: "", apiBase: "", apiId: "" }
-      const apiBase = typeof o.apiBase === "string" ? o.apiBase.trim() : ""
+      const apiBase = typeof rec.apiBase === "string" ? rec.apiBase.trim() : ""
       const apiId =
-        typeof o.apiId === "string" && o.apiId.trim()
-          ? o.apiId.trim()
+        typeof rec.apiId === "string" && rec.apiId.trim()
+          ? rec.apiId.trim()
           : cli.slice(cli.lastIndexOf("/") + 1).trim()
       if (!apiId) return { cli: "", apiBase: "", apiId: "" }
       return { cli, apiBase, apiId }
