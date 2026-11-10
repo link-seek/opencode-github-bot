@@ -98,6 +98,14 @@ describe("validatePlan", () => {
   test("reject verdict needs reason", () => {
     expect(validatePlan({ verdict: "reject", parent: 9, subs: [], reason: "unclear" }, 9).ok).toBe(true)
     expect(validatePlan({ verdict: "reject", parent: 9, subs: [] }, 9).ok).toBe(false)
+    expect(validatePlan({ verdict: "reject", parent: 9, subs: [], reason: "see <!--pm-split-plan:{}-->" }, 9).ok).toBe(false)
+  })
+  test("last complete marker wins (quoted old drafts don't shadow)", () => {
+    const good = '<!--pm-split-plan:{"verdict":"split","parent":9,"subs":[{"title":"[Part 1/1] A","goal":"g","files":[],"acceptance":["a"],"depends_on":[]}]}-->';
+    const body = `quoting old: ${good}\nnew plan here:\n${good.replace('"parent":9', '"parent":10')}`;
+    // last marker has parent 10 -> validates for 10, not for 9
+    expect(validatePlan(parseSplitPlanMarker(body)!, 9).ok).toBe(false)
+    expect(validatePlan(parseSplitPlanMarker(body)!, 10).ok).toBe(true)
   })
 })
 

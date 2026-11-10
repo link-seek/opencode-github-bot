@@ -24,7 +24,10 @@ function ghHeaders(token: string) {
 
 async function gh(path: string, token: string, init?: RequestInit): Promise<any> {
   const res = await fetch(`${GH}${path}`, { ...init, headers: { ...ghHeaders(token), ...(init?.headers ?? {}) } })
-  if (!res.ok) throw new Error(`gh ${path}: ${res.status}`)
+  if (!res.ok) {
+    const t = await res.text().catch(() => "")
+    throw new Error(`gh ${path}: ${res.status} ${t.slice(0, 300)}`)
+  }
   if (res.status === 204) return null
   return res.json()
 }
@@ -37,11 +40,21 @@ export interface IntakeMarker {
   scores?: any
 }
 
+function lastMarker(body: string, tag: string): string | null {
+  // Multiple markers can coexist (quoted old drafts); the LAST complete one wins.
+  // Untrusted text elsewhere in the body must not shadow it.
+  const re = new RegExp(`<!--${tag}:(\\{.*?\\})-->`, "gs")
+  let m: RegExpExecArray | null = null
+  let last: string | null = null
+  while ((m = re.exec(body)) !== null) last = m[1]
+  return last
+}
+
 export function parseIntakeMarker(body: string): IntakeMarker | null {
-  const m = body.match(/<!--pm-intake:(\{.*?\})-->/s)
-  if (!m) return null
+  const raw = lastMarker(body, "pm-intake")
+  if (!raw) return null
   try {
-    return JSON.parse(m[1]) as IntakeMarker
+    return JSON.parse(raw) as IntakeMarker
   } catch {
     return null
   }
@@ -93,6 +106,8 @@ export function validatePlan(raw: any, parent: number): { ok: true; plan: SplitP
   if (typeof raw !== "object" || raw === null) return { ok: false, error: "plan is not an object" }
   if (raw.verdict === "reject") {
     if (typeof raw.reason !== "string" || !raw.reason.trim()) return { ok: false, error: "reject needs a reason" }
+    if (raw.reason.includes("<!--") || raw.reason.includes("-->"))
+      return { ok: false, error: "reject reason must not contain HTML comment markers" }
     return { ok: true, plan: { verdict: "reject", parent, subs: [], reason: raw.reason.trim() } }
   }
   if (raw.verdict !== "split") return { ok: false, error: `unknown verdict ${JSON.stringify(raw.verdict)}` }
@@ -149,10 +164,12 @@ export function splitPlanMarker(plan: SplitPlan): string {
 }
 
 export function parseSplitPlanMarker(body: string): SplitPlan | null {
-  const m = body.match(/<!--pm-split-plan:(\{.*?\})-->/s)
-  if (!m) return null
+  // Last complete marker wins — the draft comment embeds untrusted text
+  // (parent title, criteria) that must not shadow it.
+  const raw = lastMarker(body, "pm-split-plan")
+  if (!raw) return null
   try {
-    return JSON.parse(m[1]) as SplitPlan
+    return JSON.parse(raw) as SplitPlan
   } catch {
     return null
   }
@@ -247,14 +264,14 @@ const SPLIT_LABELS: Record<string, string> = {
   "needs-triage": "ededed",
 }
 
-/** Labels must exist before use (422 otherwise). Idempotent: ignores already-exists. */
+/** Labels must exist before use (422 otherwise). Idempotent: ignores already-exists only. */
 async function ensureLabels(repo: string, token: string, names: string[]) {
   for (const name of names) {
     await gh(`/repos/${repo}/labels`, token, {
       method: "POST",
       body: JSON.stringify({ name, color: SPLIT_LABELS[name] ?? "ededed" }),
     }).catch((e) => {
-      if (!String((e as Error)?.message ?? e).includes("422")) throw e
+      if (!String((e as Error)?.message ?? e).includes("already_exists")) throw e
     })
   }
 }
@@ -262,14 +279,24 @@ async function ensureLabels(repo: string, token: string, names: string[]) {
 async function findExistingChild(repo: string, token: string, title: string, parent: number): Promise<number | null> {
   // Idempotency: reuse an open issue with the same title that already points at the parent.
   // Title is matched client-side (never interpolated into the search query).
-  const res = (await gh(
-    `/search/issues?q=${encodeURIComponent(`repo:${repo} "Part of #${parent}" in:body state:open`)}`,
-    token,
-  )) as any
-  const items = (res?.items ?? []) as Array<{ number: number; title?: string; body?: string }>
-  const norm = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim()
-  const hit = items.find((it) => norm(it.title ?? "") === norm(title) && (it.body ?? "").includes(`Part of #${parent}`))
-  return hit ? hit.number : null
+  // Search is retried (transient rate limits); sustained failure proceeds as
+  // no-match with a loud log line rather than aborting a half-done apply.
+  const q = encodeURIComponent(`repo:${repo} "Part of #${parent}" in:body state:open`)
+  let lastErr: unknown = null
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const res = (await gh(`/search/issues?q=${q}`, token)) as any
+      const items = (res?.items ?? []) as Array<{ number: number; title?: string; body?: string }>
+      const norm = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim()
+      const hit = items.find((it) => norm(it.title ?? "") === norm(title) && (it.body ?? "").includes(`Part of #${parent}`))
+      return hit ? hit.number : null
+    } catch (e) {
+      lastErr = e
+      await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)))
+    }
+  }
+  console.log(`search unavailable after retries, proceeding without dedup: ${String((lastErr as Error)?.message ?? lastErr)}`)
+  return null
 }
 
 /** Topologically ordered indexes (dependencies first). */
@@ -404,7 +431,7 @@ async function runApply(env: NodeJS.ProcessEnv): Promise<void> {
     })) as any
     created.push({ number: created_issue.number, title: s.title })
   }
-  created.sort((a, b) => a.number - b.number)
+  // created[] stays in topo (dependency) order for the tasklist and summary.
   const body: string = String(issue.body ?? "")
   if (!body.includes("## Split into")) {
     await gh(`/repos/${repo}/issues/${n}`, token, {
