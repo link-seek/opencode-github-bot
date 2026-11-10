@@ -47,16 +47,20 @@ jobs:
           MODEL_ID="$(printf '%s' "$PARSED" | sed -n '1p')"
           CHAT_URL="$(printf '%s' "$PARSED" | sed -n '2p')"
           if [ -z "$MODEL_ID" ]; then echo "reject: empty model id: $MODEL" >&2; exit 1; fi
-          KEY="${OPENCODE_API_KEY:?need secrets.OPENCODE_API_KEY}"
+          : "${OPENCODE_API_KEY:?need secrets.OPENCODE_API_KEY}"
           # Go subscription endpoints require a session id header.
           SESSION_HDR=""
           if [[ "$CHAT_URL" == *"/inference/go/"* ]]; then
             SESSION_HDR="x-opencode-session: gh-${GITHUB_RUN_ID:-0}-${GITHUB_RUN_ATTEMPT:-0}"
           fi
-          python3 - "$CHAT_URL" "$KEY" "$MODEL_ID" "$SESSION_HDR" <<'EOF' > /tmp/chat-probe.json
-          import json, sys, urllib.request, urllib.error
-          url, key, model = sys.argv[1], sys.argv[2], sys.argv[3]
-          extra = [a for a in sys.argv[4:] if a]
+          python3 - "$CHAT_URL" "$MODEL_ID" "$SESSION_HDR" <<'EOF' > /tmp/chat-probe.json
+          import json, os, sys, urllib.request, urllib.error
+          url, model = sys.argv[1], sys.argv[2]
+          key = os.environ.get("OPENCODE_API_KEY", "")
+          if not key:
+              print("missing OPENCODE_API_KEY", file=sys.stderr)
+              raise SystemExit(1)
+          extra = [a for a in sys.argv[3:] if a]
           body = json.dumps({
               "model": model,
               "messages": [{"role": "user", "content": "reply with exactly: OK"}],
@@ -70,6 +74,7 @@ jobs:
           for h in extra:
               k, _, v = h.partition(":")
               headers[k.strip()] = v.strip()
+          url = url.rstrip("/") + "/chat/completions"
           req = urllib.request.Request(url, data=body, headers=headers)
           try:
               resp = urllib.request.urlopen(req, timeout=60)
