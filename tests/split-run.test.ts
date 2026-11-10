@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import {
   checkEntry,
   findSplitPlan,
+  ghStatus,
   isDuplicateDraft,
   parseIntakeMarker,
   parseSplitPlanMarker,
@@ -192,5 +193,11 @@ describe("rendering", () => {
     expect(isDuplicateDraft([human], plan as any)).toBe(false)
     expect(isDuplicateDraft([human, bot], plan as any)).toBe(true)
     expect(isDuplicateDraft([], plan as any)).toBe(false)
+    expect(isDuplicateDraft(null, plan as any)).toBe(false)
+  })
+  test("ghStatus parses leading status, null otherwise", () => {
+    expect(ghStatus(new Error("gh /repos/x/issues/1: 404 Not Found"))).toBe(404)
+    expect(ghStatus(new Error("boom"))).toBeNull()
+    expect(ghStatus(null)).toBeNull()
   })
 })

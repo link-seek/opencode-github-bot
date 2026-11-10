@@ -347,6 +347,25 @@ async function ensureLabels(repo: string, token: string, names: string[]) {
   }
 }
 
+/** Parse the HTTP status out of a gh() error ("gh <path>: <status> ..."). */
+export function ghStatus(err: unknown): number | null {
+  const m = String((err as Error)?.message ?? err).match(/^gh \S+: (\d{3})\b/)
+  return m ? Number(m[1]) : null
+}
+
+async function listComments(repo: string, n: number, token: string, why: string): Promise<SplitComment[]> {
+  try {
+    const res: unknown = await gh(`/repos/${repo}/issues/${n}/comments?per_page=100`, token)
+    if (!Array.isArray(res)) {
+      console.log(`${why}: comments payload not an array, proceeding without it`)
+      return []
+    }
+    return res as SplitComment[]
+  } catch (e) {
+    console.log(`${why}: comments fetch failed, proceeding without it: ${String((e as Error)?.message ?? e).slice(0, 160)}`)
+    return []
+  }
+}
 async function findExistingChild(repo: string, token: string, title: string, parent: number): Promise<number | null> {
   // Idempotency: reuse an open issue with the same title that already points at the parent.
   // Title is matched client-side (never interpolated into the search query).
@@ -399,7 +418,7 @@ async function runPlanPre(env: NodeJS.ProcessEnv): Promise<void> {
   let entry = checkEntry(labels, String(issue.body ?? ""))
   let marker = entry.ok ? (entry as EntryOk).marker : null
   if (!entry.ok && (entry as EntrySkip).reason.includes("no pm-intake marker")) {
-    const comments = (await gh(`/repos/${repo}/issues/${n}/comments?per_page=100`, token)) as any[]
+    const comments = await listComments(repo, n, token, "plan-pre intake lookup")
     marker = findMarkerInComments(comments)
     if (marker && marker.decision === "needs-split") entry = { ok: true, marker }
   }
@@ -407,7 +426,7 @@ async function runPlanPre(env: NodeJS.ProcessEnv): Promise<void> {
     console.log(`split-plan skipped: ${(entry as EntrySkip).reason}`)
     return
   }
-  const comments = (await gh(`/repos/${repo}/issues/${n}/comments?per_page=20`, token)) as any[]
+  const comments = await listComments(repo, n, token, "plan-pre context")
   const ctx = [
     `# Split context: #${n} ${String(issue.title ?? "")}`,
     ``,
@@ -454,11 +473,7 @@ async function runPlanPost(env: NodeJS.ProcessEnv): Promise<void> {
     return
   }
   const issue = (await gh(`/repos/${repo}/issues/${n}`, token)) as any
-  const rawComments: unknown = await gh(`/repos/${repo}/issues/${n}/comments?per_page=100`, token).catch((e) => {
-    console.log(`plan-post comments fetch failed, dedup skipped: ${String((e as Error)?.message ?? e).slice(0, 160)}`)
-    return []
-  })
-  const priorComments: SplitComment[] = Array.isArray(rawComments) ? (rawComments as SplitComment[]) : []
+  const priorComments = await listComments(repo, n, token, "plan-post dedup")
   // Dedup: skip reposting an identical draft already posted by a trusted author.
   if (isDuplicateDraft(priorComments, v.plan)) {
     console.log("identical draft already posted, skipping duplicate")
@@ -482,11 +497,7 @@ async function runApply(env: NodeJS.ProcessEnv): Promise<void> {
     console.log("split already applied, nothing to do")
     return
   }
-  const commentsRaw: unknown = await gh(`/repos/${repo}/issues/${n}/comments?per_page=100`, token).catch((e) => {
-    console.log(`apply comments fetch failed, proceeding without dedup: ${String((e as Error)?.message ?? e).slice(0, 160)}`)
-    return []
-  })
-  const comments: SplitComment[] = Array.isArray(commentsRaw) ? (commentsRaw as SplitComment[]) : []
+  const comments = await listComments(repo, n, token, "apply gate")
   const hasDraft = (await findSplitPlan(comments)) != null
   if (!labels.includes("split-proposed") && !hasDraft) {
     console.log("no split-proposed label and no approved draft, nothing to do (need human-approved draft first)")
@@ -555,18 +566,17 @@ async function runApply(env: NodeJS.ProcessEnv): Promise<void> {
         body: JSON.stringify({ body: `${body.trim()}\n\n${renderParentSplitSection(created)}` }),
       })
     } catch (e) {
-      // Best-effort on permission denials (403/404/422: no label-admin, stale refs).
+      // Best-effort on permission denials (parsed status, not body text).
       // Anything else (network/5xx/auth) still fails loudly.
-      const msg = String((e as Error)?.message ?? e)
-      if (!/:( 403| 404| 422)[\s:]/.test(msg)) throw e
-      console.log(`parent tasklist skipped: ${msg.slice(0, 200)}`)
+      const st = ghStatus(e)
+      if (st !== 403 && st !== 404 && st !== 422) throw e
+      console.log(`parent tasklist skipped (HTTP ${String(st)}): ${String((e as Error)?.message ?? e).slice(0, 160)}`)
     }
   }
-  await removeLabel(repo, n, token, "split-proposed").catch(() => null)
   const summaryHead = `Split applied: ${created.map((c) => `#${c.number}`).join(", ")}`
   try {
-    const prior = await gh(`/repos/${repo}/issues/${n}/comments?per_page=100`, token).catch((): any[] => [])
-    const already = (Array.isArray(prior) ? prior : []).some((c: any) => String(c?.body ?? "").includes(summaryHead))
+    const prior = await listComments(repo, n, token, "apply summary dedup")
+    const already = prior.some((c) => String(c.body ?? "").includes(summaryHead))
     if (!already) {
       await postComment(
         repo, n, token,
@@ -581,12 +591,14 @@ async function runApply(env: NodeJS.ProcessEnv): Promise<void> {
       console.log("identical summary already posted, skipping duplicate")
     }
   } catch (e) {
-    // Summary is the fallback traceability path: never let it fail silently.
+    // Summary is the fallback traceability path: record the failure, then fail loud.
+    await appendRecord({ v: 1, ts: new Date().toISOString(), repo, issue: n, phase: "apply", ok: false, error: String((e as Error)?.message ?? e).slice(0, 200), children: created.map((c) => c.number) })
     console.log(`summary post failed: ${String((e as Error)?.message ?? e).slice(0, 200)}`)
     throw e
   }
   // Labels last: a failure above must not leave split-applied set while the
   // summary is missing (that would skip the retry via the early-return gate).
+  await removeLabel(repo, n, token, "split-proposed").catch(() => null)
   await applyLabels(repo, n, token, ["split-applied"])
   await appendRecord({ v: 1, ts: new Date().toISOString(), repo, issue: n, phase: "apply", ok: true, children: created.map((c) => c.number) })
 }
