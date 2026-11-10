@@ -106,14 +106,14 @@ function isTrusted(c: SplitComment): boolean {
 
 /** True when an identical draft (split or reject) was already posted by a trusted author. */
 export function isDuplicateDraft(comments: unknown, plan: SplitPlan): boolean {
-  const list = (Array.isArray(comments) ? comments : []) as SplitComment[]
-  // Normalize both sides through validatePlan so key order/whitespace can't
-  // cause false negatives (incoming plans are expected canonical already).
-  const norm = validatePlan(JSON.parse(JSON.stringify(plan)), plan.parent)
-  if (!norm.ok) return false
-  const raw = lastMarker(list.filter(isTrusted).map((c) => String(c.body ?? "")).join("\n"), "pm-split-plan")
-  if (!raw) return false
   try {
+    const list: SplitComment[] = Array.isArray(comments) ? (comments as SplitComment[]) : []
+    // Normalize both sides through validatePlan so key order/whitespace can't
+    // cause false negatives (incoming plans are expected canonical already).
+    const norm = validatePlan(JSON.parse(JSON.stringify(plan)), plan.parent)
+    if (!norm.ok) return false
+    const raw = lastMarker(list.filter(isTrusted).map((c) => String(c.body ?? "")).join("\n"), "pm-split-plan")
+    if (!raw) return false
     const pv = validatePlan(JSON.parse(raw), plan.parent)
     return pv.ok && JSON.stringify(pv.plan) === JSON.stringify(norm.plan)
   } catch {
@@ -468,8 +468,11 @@ async function runApply(env: NodeJS.ProcessEnv): Promise<void> {
     console.log("split already applied, nothing to do")
     return
   }
-  const commentsRaw: unknown = await gh(`/repos/${repo}/issues/${n}/comments?per_page=100`, token)
-  const comments: SplitComment[] = Array.isArray(commentsRaw) ? commentsRaw : []
+  const commentsRaw: unknown = await gh(`/repos/${repo}/issues/${n}/comments?per_page=100`, token).catch((e) => {
+    console.log(`apply comments fetch failed, proceeding without dedup: ${String((e as Error)?.message ?? e).slice(0, 160)}`)
+    return []
+  })
+  const comments: SplitComment[] = Array.isArray(commentsRaw) ? (commentsRaw as SplitComment[]) : []
   const hasDraft = (await findSplitPlan(comments)) != null
   if (!labels.includes("split-proposed") && !hasDraft) {
     console.log("no split-proposed label and no approved draft, nothing to do (need human-approved draft first)")
