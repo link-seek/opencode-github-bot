@@ -25,9 +25,11 @@ jobs:
       - name: Smoke test — agent loads and responds
         env:
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          OPENCODE_MODEL: ${{ vars.OPENCODE_MODEL }}
         run: |
           export PATH="$HOME/.opencode/bin:$PATH"
-          CLI_MODEL="${{ vars.OPENCODE_MODEL }}"
-          CLI_MODEL="${CLI_MODEL%% *}"
+          # Unified variable (JSON {"cli","apiBase"}, legacy formats accepted).
+          # Value passes through env (never interpolated verbatim into the command).
+          CLI_MODEL="$(python3 scripts/model-cli.py "$OPENCODE_MODEL")"
           opencode run --agent github-bot --model "$CLI_MODEL" "What is 2+2? Reply with just the number." | tee /tmp/smoke.log
           grep -q "4" /tmp/smoke.log || { echo "Smoke test failed"; cat /tmp/smoke.log; exit 1; }

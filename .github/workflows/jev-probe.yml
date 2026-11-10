@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       jev-model:
-        description: 'Composite "<cli-id> <api-base-url>" (default: gateway free baseline)'
+        description: 'Model variable JSON, e.g. {"cli":"jev-1.13-free","apiBase":"https://opencode.ai/inference/systemone/v1/systemone"}'
         required: false
-        default: "jev-1.13-free https://opencode.ai/inference/systemone/v1/systemone"
+        default: '{"cli":"jev-1.13-free","apiBase":"https://opencode.ai/inference/systemone/v1/systemone"}'
 
 jobs:
   probe:
@@ -20,11 +20,34 @@ jobs:
         run: |
           set -euo pipefail
           MODEL="${JEV_MODEL_INPUT:?need jev-model input}"
-          # Composite "<cli-id> <api-base-url>"; single token = legacy bare id on gateway.
-          read -r CLI_ID JEV_URL _rest <<< "$MODEL"
-          MODEL_ID="${CLI_ID##*/}"
+          # Model variable: JSON {"cli","apiBase"} (legacy space-separated/bare id).
+          PARSED="$(python3 - "$MODEL" <<'EOF'
+          import json, sys
+          v = sys.argv[1].strip()
+          cli, base = "", ""
+          try:
+              if v.startswith("{"):
+                  o = json.loads(v)
+                  if not isinstance(o, dict):
+                      raise ValueError("model JSON must be an object")
+                  c = o.get("cli")
+                  b = o.get("apiBase")
+                  cli = c.strip() if isinstance(c, str) else ""
+                  base = b.strip() if isinstance(b, str) else ""
+              else:
+                  p = v.split()
+                  cli, base = (p[0].strip() if p else ""), (p[1].strip() if len(p) > 1 else "")
+          except Exception as e:
+              print(f"reject: bad model value: {e}", file=sys.stderr)
+              raise SystemExit(1)
+          mid = cli.rsplit("/", 1)[-1].strip() if cli else ""
+          print(mid)
+          print(base or "https://opencode.ai/inference/systemone/v1/systemone")
+          EOF
+          )"
+          MODEL_ID="$(printf '%s' "$PARSED" | sed -n '1p')"
+          JEV_URL="$(printf '%s' "$PARSED" | sed -n '2p')"
           if [ -z "$MODEL_ID" ]; then echo "reject: empty model id: $MODEL" >&2; exit 1; fi
-          if [ -z "$JEV_URL" ]; then JEV_URL="https://opencode.ai/inference/systemone/v1/systemone"; fi
           KEY="${OPENCODE_API_KEY:?need secrets.OPENCODE_API_KEY for probe (free needs key too)}"
           python3 - "$JEV_URL" "$KEY" "$MODEL_ID" <<'EOF' > /tmp/jev-probe.json
           import json, sys, urllib.request, urllib.error

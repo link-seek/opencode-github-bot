@@ -109,10 +109,10 @@ describe("jevIntake parsing", () => {
   })
 })
 
-describe("jevEndpointFromEnv (composite JEV_MODEL)", () => {
-  test("composite value routes endpoint + strips to bare id", () => {
+describe("jevEndpointFromEnv (JSON JEV_MODEL)", () => {
+  test("JSON value routes endpoint + api id", () => {
     const ep = jevEndpointFromEnv({
-      JEV_MODEL: "jev-1.13-free https://opencode.ai/inference/systemone/v1/systemone",
+      JEV_MODEL: '{"cli":"jev-1.13-free","apiBase":"https://opencode.ai/inference/systemone/v1/systemone"}',
       OPENCODE_API_KEY: "k",
     } as any)
     expect(ep).toEqual({
@@ -121,13 +121,24 @@ describe("jevEndpointFromEnv (composite JEV_MODEL)", () => {
       model: "jev-1.13-free",
     })
   })
-  test("zen endpoint via composite value", () => {
+  test("JSON with zen endpoint", () => {
     const ep = jevEndpointFromEnv({
-      JEV_MODEL: "zen/jev-1.13-free https://opencode.ai/zen/v1/systemone",
+      JEV_MODEL: '{"cli":"zen/jev-1.13-free","apiBase":"https://opencode.ai/zen/v1/systemone"}',
       OPENCODE_API_KEY: "k",
     } as any)
     expect(ep).toEqual({
       url: "https://opencode.ai/zen/v1/systemone",
+      key: "k",
+      model: "jev-1.13-free",
+    })
+  })
+  test("legacy space-separated still routes", () => {
+    const ep = jevEndpointFromEnv({
+      JEV_MODEL: "jev-1.13-free https://opencode.ai/inference/systemone/v1/systemone",
+      OPENCODE_API_KEY: "k",
+    } as any)
+    expect(ep).toEqual({
+      url: "https://opencode.ai/inference/systemone/v1/systemone",
       key: "k",
       model: "jev-1.13-free",
     })
