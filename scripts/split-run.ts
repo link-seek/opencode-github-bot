@@ -279,8 +279,14 @@ async function appendRecord(row: Record<string, unknown>): Promise<void> {
 }
 
 async function applyLabels(repo: string, n: number, token: string, labels: string[]) {
+  // Fully best-effort (unknown label, no label-admin 404/403, rate limit):
+  // labels are advisory; comments carry the state. Warn and continue.
   if (!labels.length) return
-  await gh(`/repos/${repo}/issues/${n}/labels`, token, { method: "POST", body: JSON.stringify({ labels }) })
+  try {
+    await gh(`/repos/${repo}/issues/${n}/labels`, token, { method: "POST", body: JSON.stringify({ labels }) })
+  } catch (e) {
+    console.log(`applyLabels skipped (${labels.join(",")}): ${String((e as Error)?.message ?? e).slice(0, 200)}`)
+  }
 }
 
 async function removeLabel(repo: string, n: number, token: string, label: string) {
@@ -329,14 +335,14 @@ const SPLIT_LABELS: Record<string, string> = {
   "needs-triage": "ededed",
 }
 
-/** Labels must exist before use (422 otherwise). Idempotent: ignores already-exists only. */
+/** Labels are advisory; state lives in comments. Never let label admin fail the run. */
 async function ensureLabels(repo: string, token: string, names: string[]) {
   for (const name of names) {
     await gh(`/repos/${repo}/labels`, token, {
       method: "POST",
       body: JSON.stringify({ name, color: SPLIT_LABELS[name] ?? "ededed" }),
     }).catch((e) => {
-      if (!String((e as Error)?.message ?? e).includes("already_exists")) throw e
+      console.log(`ensureLabels skipped ${name}: ${String((e as Error)?.message ?? e).slice(0, 160)}`)
     })
   }
 }
