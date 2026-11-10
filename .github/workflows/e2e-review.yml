@@ -12,6 +12,8 @@ jobs:
   e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
         with:
