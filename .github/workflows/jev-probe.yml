@@ -24,13 +24,18 @@ jobs:
           PARSED="$(python3 - "$MODEL" <<'EOF'
           import json, sys
           v = sys.argv[1].strip()
-          if v.startswith("{"):
-              o = json.loads(v)
-              cli, base = o.get("cli", ""), o.get("apiBase", "")
-          else:
-              p = v.split()
-              cli, base = (p[0] if p else ""), (p[1] if len(p) > 1 else "")
-          mid = cli.rsplit("/", 1)[-1] if cli else ""
+          cli, base = "", ""
+          try:
+              if v.startswith("{"):
+                  o = json.loads(v)
+                  cli, base = str(o.get("cli", "")).strip(), str(o.get("apiBase", "")).strip()
+              else:
+                  p = v.split()
+                  cli, base = (p[0] if p else ""), (p[1] if len(p) > 1 else "")
+          except Exception as e:
+              print(f"reject: bad model value: {e}", file=sys.stderr)
+              raise SystemExit(1)
+          mid = cli.rsplit("/", 1)[-1].strip() if cli else ""
           print(mid)
           print(base or "https://opencode.ai/inference/systemone/v1/systemone")
           EOF

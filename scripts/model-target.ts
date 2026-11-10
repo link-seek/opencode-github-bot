@@ -35,9 +35,9 @@ export function parseModelVar(raw: string): ModelVar {
     }
   }
   const parts = t.split(/\s+/)
-  const cli = parts[0] || ""
-  const apiBase = parts[1] || ""
-  const apiId = cli.slice(cli.lastIndexOf("/") + 1)
+  const cli = (parts[0] || "").trim()
+  const apiBase = (parts[1] || "").trim()
+  const apiId = cli.slice(cli.lastIndexOf("/") + 1).trim()
   if (!apiId) return { cli: "", apiBase: "", apiId: "" }
   return { cli, apiBase, apiId }
 }
