@@ -4,16 +4,15 @@
  *  - scores are NORMALIZED to 0-1 (raw score / top level number) before routing;
  *  - score confidences gate automation (low confidence -> human);
  *  - duplicates use one Noul per candidate (same_as_<n>), giving attribution.
- * Single model variable: JEV_MODEL drives both endpoint and model id by
- * provider prefix, same convention as OPENCODE_MODEL:
- *  - "opencode/jev-1.13-free" or bare "jev-1.13-free" -> OpenCode gateway
- *  - "zen/jev-1.13-free" -> OpenCode Zen endpoint (same host family)
- * Opencode only — no direct TypeSafe path. Key: OPENCODE_API_KEY (secret),
- * inputs.llm-api-key arrives as LLM_API_KEY fallback. No key -> null (fail-closed).
+ * Single model variable: "<cli-model> <api-base-url>" (see model-target.ts).
+ *  - CLI uses the first token as-is.
+ *  - API uses the second token as endpoint + id after the last "/".
+ * Opencode only. Single token (legacy) = CLI form, endpoint defaults to gateway.
+ * Key: OPENCODE_API_KEY else inputs.llm-api-key. No key -> null (fail-closed).
  */
+import { parseModelVar } from "./model-target"
 export const DEFAULT_JEV_MODEL = "jev-1.13-free"
-export const OPENCODE_JEV_URL = "https://opencode.ai/inference/systemone/v1/systemone"
-export const ZEN_JEV_URL = "https://opencode.ai/zen/v1/systemone"
+export const DEFAULT_JEV_URL = "https://opencode.ai/inference/systemone/v1/systemone"
 
 export interface CandidateDoc {
   number: number
@@ -114,19 +113,9 @@ export interface JevEndpoint {
 }
 
 export function resolveJevTarget(raw: string): { url: string; model: string } | null {
-  const m = (raw || "").trim()
-  // Unset -> org default (gateway free model). Explicit garbage fails closed below.
-  if (!m) return { url: OPENCODE_JEV_URL, model: DEFAULT_JEV_MODEL }
-  if (m.startsWith("zen/")) {
-    const id = m.slice("zen/".length).trim()
-    if (!id || id.includes("/")) return null
-    return { url: ZEN_JEV_URL, model: id }
-  }
-  const bare = m.startsWith("opencode/") ? m.slice("opencode/".length).trim() : m
-  // Unknown provider prefix (e.g. a typo like "typesafe/..."): fail closed
-  // instead of sending a garbage model id to the gateway.
-  if (!bare || bare.includes("/")) return null
-  return { url: OPENCODE_JEV_URL, model: bare }
+  const v = parseModelVar(raw)
+  if (!v.apiId) return null
+  return { url: v.apiBase || DEFAULT_JEV_URL, model: v.apiId }
 }
 
 export function jevEndpointFromEnv(env: NodeJS.ProcessEnv = process.env): JevEndpoint | null {
