@@ -75,6 +75,11 @@ describe("validatePlan", () => {
     bad.subs[0].title = "A without tag"
     expect(validatePlan(bad, 9).ok).toBe(false)
   })
+  test("rejects duplicate depends_on", () => {
+    const bad = JSON.parse(JSON.stringify(good))
+    bad.subs[1].depends_on = [1, 1]
+    expect(validatePlan(bad, 9).ok).toBe(false)
+  })
   test("rejects cycles", () => {
     const bad = JSON.parse(JSON.stringify(good))
     bad.subs[0].depends_on = [2]

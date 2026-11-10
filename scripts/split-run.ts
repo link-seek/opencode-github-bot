@@ -114,11 +114,12 @@ export function validatePlan(raw: any, parent: number): { ok: true; plan: SplitP
       return { ok: false, error: `subs[${i}] needs non-empty acceptance criteria` }
     if (!Array.isArray(s?.depends_on) || !s.depends_on.every((d: unknown) => Number.isInteger(d) && (d as number) >= 1 && (d as number) <= n && (d as number) !== i + 1))
       return { ok: false, error: `subs[${i}].depends_on must be 1-based indexes into subs (no self-refs)` }
+    if (new Set(s.depends_on).size !== s.depends_on.length)
+      return { ok: false, error: `subs[${i}].depends_on has duplicates` }
     subs.push({ title: s.title, goal: s.goal.trim(), files: s.files, acceptance: s.acceptance.map((a: string) => a.trim()), depends_on: [...s.depends_on].sort((a: number, b: number) => a - b) })
   }
-  // Cycle check (Kahn).
-  const indeg = subs.map(() => 0)
-  subs.forEach((s) => s.depends_on.forEach((d) => { indeg[d - 1]++ }))
+  // Cycle check (Kahn): indegree of j = number of its unprocessed prerequisites.
+  const indeg = subs.map((s) => s.depends_on.length)
   const q: number[] = []
   indeg.forEach((d, i) => { if (d === 0) q.push(i) })
   let seen = 0
@@ -241,8 +242,7 @@ async function findExistingChild(repo: string, token: string, title: string, par
 /** Topologically ordered indexes (dependencies first). */
 export function topoOrder(subs: PlanSub[]): number[] {
   const n = subs.length
-  const indeg = subs.map(() => 0)
-  subs.forEach((s) => s.depends_on.forEach((d) => { indeg[d - 1]++ }))
+  const indeg = subs.map((s) => s.depends_on.length)
   const dependents: number[][] = subs.map(() => [])
   subs.forEach((s, j) => s.depends_on.forEach((d) => { dependents[d - 1].push(j) }))
   const q: number[] = []
