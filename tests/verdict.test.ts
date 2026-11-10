@@ -95,10 +95,6 @@ describe("llm-judge contract", () => {
     } as any)
     expect(seen[1]["x-opencode-session"]).toBeUndefined()
   })
-    const { llmJudge } = await import("../scripts/llm-judge")
-    const fake = (async () => ({ ok: true, json: async () => ({}) })) as unknown as typeof fetch
-    await expect(llmJudge("d", "t", "b", [], fake, { LLM_API_KEY: "x", OPENCODE_MODEL: "   " } as any)).rejects.toThrow("need LLM_JUDGE_MODEL")
-  })
   test("composite model var: id stripped, explicit base wins", async () => {
     const { llmJudge } = await import("../scripts/llm-judge")
     let seen: any = null
