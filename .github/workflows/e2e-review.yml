@@ -27,7 +27,8 @@ jobs:
           echo "# E2E test" >> README.md
           git add README.md && git commit -m "test: e2e review trigger"
           git push origin e2e-review-test
-          PR_NUM=$(gh pr create --title "e2e: review test" --body "Test PR for E2E review validation." --base main --json number --jq '.number')
+          PR_URL=$(gh pr create --title "e2e: review test" --body "Test PR for E2E review validation." --base main)
+          PR_NUM=${PR_URL##*/}
           echo "pr_number=$PR_NUM" >> $GITHUB_OUTPUT
 
       - name: Run OpenCode review
