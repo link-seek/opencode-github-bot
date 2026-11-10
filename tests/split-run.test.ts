@@ -54,6 +54,16 @@ describe("validatePlan", () => {
   test("rejects wrong parent (cross-issue application guard)", () => {
     const r = validatePlan(good, 10)
     expect(r.ok).toBe(false)
+    expect(validatePlan({ verdict: "reject", parent: 1, subs: [], reason: "unclear" }, 9).ok).toBe(false)
+  })
+  test("rejects multi-line titles", () => {
+    const bad = JSON.parse(JSON.stringify(good))
+    bad.subs[0].title = "[Part 1/2] A\nB"
+    expect(validatePlan(bad, 9).ok).toBe(false)
+  })
+  test("sanitizeTitle strips newlines for markdown safety", async () => {
+    const m = await import("../scripts/split-run")
+    expect(m.sanitizeTitle("a|b\nc")).toBe("a|b c")
   })
   test("rejects >5 subs", () => {
     const subs = Array.from({ length: 6 }, (_, i) => ({
