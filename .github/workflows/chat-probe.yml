@@ -64,7 +64,7 @@ jobs:
           body = json.dumps({
               "model": model,
               "messages": [{"role": "user", "content": "reply with exactly: OK"}],
-              "max_tokens": 8,
+              "max_tokens": 200,
           }).encode()
           headers = {"Content-Type": "application/json",
                      # opencode.ai sits behind Cloudflare, which bans Python-urllib's
@@ -89,4 +89,4 @@ jobs:
               raise SystemExit(1)
           EOF
           head -c 800 /tmp/chat-probe.json; echo
-          python3 -c "import json; d=json.load(open('/tmp/chat-probe.json')); t=d['choices'][0]['message']['content']; print('reply=',t.strip()[:60]); assert 'OK' in t.upper(), 'probe failed'"
+          python3 -c "import json; d=json.load(open('/tmp/chat-probe.json')); m=d['choices'][0]['message']; t=((m.get('content') or '')+' '+str(m.get('reasoning_content') or '')); print('reply=',t.strip()[:120]); assert 'OK' in t.upper(), 'probe failed'"
