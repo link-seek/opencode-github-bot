@@ -1,0 +1,38 @@
+name: replay
+
+on:
+  workflow_dispatch:
+    inputs:
+      policy:
+        description: "Replay policies (comma-separated): keyword,jev,llm,all"
+        required: false
+        default: "keyword,jev"
+      issues:
+        description: "Issue numbers, comma-separated (empty = calibration set)"
+        required: false
+        default: "1,2,3,5,7,8,13"
+
+jobs:
+  replay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      issues: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - uses: ./.github/actions/setup-bun
+      - run: bun install
+      - name: Calibration replay (read-only, no triage writes)
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          REPLAY_POLICY: ${{ inputs.policy }}
+          REPLAY_ISSUES: ${{ inputs.issues }}
+          JEV_MODEL: ${{ vars.JEV_MODEL }}
+          OPENCODE_MODEL: ${{ vars.OPENCODE_MODEL }}
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          LLM_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+        run: bun scripts/replay.ts
