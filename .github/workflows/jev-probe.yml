@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       jev-model:
-        description: "JEV_MODEL value: bare/opencode/ id -> gateway, zen/ id -> Zen (default: free baseline)"
+        description: 'Composite "<cli-id> <api-base-url>" (default: gateway free baseline)'
         required: false
-        default: "jev-1.13-free"
+        default: "jev-1.13-free https://opencode.ai/inference/systemone/v1/systemone"
 
 jobs:
   probe:
@@ -20,34 +20,12 @@ jobs:
         run: |
           set -euo pipefail
           MODEL="${JEV_MODEL_INPUT:?need jev-model input}"
-          case "$MODEL" in
-            zen/*)
-              JEV_URL="https://opencode.ai/zen/v1/systemone"
-              MODEL_ID="${MODEL#zen/}"
-              case "$MODEL_ID" in
-                "" | */*) echo "reject: bad zen model id: $MODEL" >&2; exit 1 ;;
-              esac
-              KEY="${OPENCODE_API_KEY:-}"
-              : "${KEY:?need secrets.OPENCODE_API_KEY for Zen probe (free needs key too)}"
-              ;;
-            opencode/*)
-              JEV_URL="https://opencode.ai/inference/systemone/v1/systemone"
-              MODEL_ID="${MODEL#opencode/}"
-              case "$MODEL_ID" in
-                "" | */*) echo "reject: bad opencode model id: $MODEL" >&2; exit 1 ;;
-              esac
-              KEY="${OPENCODE_API_KEY:?need secrets.OPENCODE_API_KEY for gateway probe}"
-              ;;
-            */*)
-              echo "reject: unknown model prefix: $MODEL (use bare, opencode/ or zen/)" >&2
-              exit 1
-              ;;
-            *)
-              JEV_URL="https://opencode.ai/inference/systemone/v1/systemone"
-              MODEL_ID="$MODEL"
-              KEY="${OPENCODE_API_KEY:?need secrets.OPENCODE_API_KEY for gateway probe}"
-              ;;
-          esac
+          # Composite "<cli-id> <api-base-url>"; single token = legacy bare id on gateway.
+          read -r CLI_ID JEV_URL _rest <<< "$MODEL"
+          MODEL_ID="${CLI_ID##*/}"
+          if [ -z "$MODEL_ID" ]; then echo "reject: empty model id: $MODEL" >&2; exit 1; fi
+          if [ -z "$JEV_URL" ]; then JEV_URL="https://opencode.ai/inference/systemone/v1/systemone"; fi
+          KEY="${OPENCODE_API_KEY:?need secrets.OPENCODE_API_KEY for probe (free needs key too)}"
           python3 - "$JEV_URL" "$KEY" "$MODEL_ID" <<'EOF' > /tmp/jev-probe.json
           import json, sys, urllib.request, urllib.error
           url, key, model = sys.argv[1], sys.argv[2], sys.argv[3]

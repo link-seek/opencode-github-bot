@@ -70,10 +70,23 @@ describe("llm-judge contract", () => {
     const fake = (async () => ({ ok: true, json: async () => ({}) })) as unknown as typeof fetch
     await expect(llmJudge("d", "t", "b", [], fake, { LLM_API_KEY: "x", OPENCODE_MODEL: "   " } as any)).rejects.toThrow("need LLM_JUDGE_MODEL")
   })
-  test("unknown provider without base URL throws (no silent gateway)", async () => {
+  test("composite model var: id stripped, explicit base wins", async () => {
     const { llmJudge } = await import("../scripts/llm-judge")
-    const fake = (async () => ({ ok: true, json: async () => ({}) })) as unknown as typeof fetch
-    await expect(llmJudge("d", "t", "b", [], fake, { LLM_API_KEY: "x", OPENCODE_MODEL: "custom/m" } as any)).rejects.toThrow("unknown model provider")
+    let seen: any = null
+    const fake = (async (_u: any, init: any) => {
+      seen = { url: _u, body: JSON.parse(init.body) }
+      return {
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: '{"repo_fit":0.9,"is_clear":0.8,"type":"bug","size":0.3,"priority":0.5,"duplicate":0.1}' } }],
+          usage: { prompt_tokens: 1, completion_tokens: 1 },
+        }),
+      }
+    }) as unknown as typeof fetch
+    const r = await llmJudge("d", "t", "b", [], fake, { LLM_API_KEY: "x", OPENCODE_MODEL: "custom/my-model https://llm.invalid/v1" } as any)
+    expect(r.type).toBe("bug")
+    expect(seen.url).toBe("https://llm.invalid/v1/chat/completions")
+    expect(seen.body.model).toBe("my-model")
   })
   test("malformed model output throws clear error (no crash)", async () => {
     const { llmJudge } = await import("../scripts/llm-judge")

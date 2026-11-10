@@ -3,13 +3,12 @@ import {
   buildJevQuestions,
   buildJevState,
   DEFAULT_JEV_MODEL,
+  DEFAULT_JEV_URL,
   jevEndpointFromEnv,
   jevIntake,
   normalizeScore,
-  OPENCODE_JEV_URL,
   resolveJevTarget,
   SCORE_LEVELS,
-  ZEN_JEV_URL,
 } from "../scripts/jev"
 
 describe("normalizeScore", () => {
@@ -25,9 +24,9 @@ describe("normalizeScore", () => {
 })
 
 describe("jev contract (docs-aligned)", () => {
-  test("defaults pinned: opencode gateway + free model", () => {
+  test("defaults pinned: gateway url + free model", () => {
     expect(DEFAULT_JEV_MODEL).toBe("jev-1.13-free")
-    expect(OPENCODE_JEV_URL).toContain("opencode.ai")
+    expect(DEFAULT_JEV_URL).toContain("opencode.ai")
     const q = buildJevQuestions("duty", [])
     expect(Object.keys(q).sort()).toEqual(
       ["is_clear", "priority", "repo_fit", "size", "type"].sort(),
@@ -110,32 +109,36 @@ describe("jevIntake parsing", () => {
   })
 })
 
-describe("jevEndpointFromEnv (JEV_MODEL drives endpoint+model)", () => {
-  test("bare id -> opencode gateway", () => {
-    const ep = jevEndpointFromEnv({ JEV_MODEL: "jev-1.13", OPENCODE_API_KEY: "k" } as any)
-    expect(ep).toEqual({ url: OPENCODE_JEV_URL, key: "k", model: "jev-1.13" })
+describe("jevEndpointFromEnv (composite JEV_MODEL)", () => {
+  test("composite value routes endpoint + strips to bare id", () => {
+    const ep = jevEndpointFromEnv({
+      JEV_MODEL: "jev-1.13-free https://opencode.ai/inference/systemone/v1/systemone",
+      OPENCODE_API_KEY: "k",
+    } as any)
+    expect(ep).toEqual({
+      url: "https://opencode.ai/inference/systemone/v1/systemone",
+      key: "k",
+      model: "jev-1.13-free",
+    })
   })
-  test("opencode/ prefix -> opencode gateway, prefix stripped", () => {
-    const ep = jevEndpointFromEnv({ JEV_MODEL: "opencode/jev-1.13", OPENCODE_API_KEY: "k" } as any)
-    expect(ep).toEqual({ url: OPENCODE_JEV_URL, key: "k", model: "jev-1.13" })
+  test("zen endpoint via composite value", () => {
+    const ep = jevEndpointFromEnv({
+      JEV_MODEL: "zen/jev-1.13-free https://opencode.ai/zen/v1/systemone",
+      OPENCODE_API_KEY: "k",
+    } as any)
+    expect(ep).toEqual({
+      url: "https://opencode.ai/zen/v1/systemone",
+      key: "k",
+      model: "jev-1.13-free",
+    })
   })
-  test("unknown provider prefix fails closed (no garbage to gateway)", () => {
-    expect(jevEndpointFromEnv({ JEV_MODEL: "typesafe/jev-1.13.0", OPENCODE_API_KEY: "k" } as any)).toBeNull()
+  test("legacy single token -> gateway default endpoint", () => {
+    const ep = jevEndpointFromEnv({ JEV_MODEL: "jev-1.13-free", OPENCODE_API_KEY: "k" } as any)
+    expect(ep).toEqual({ url: DEFAULT_JEV_URL, key: "k", model: "jev-1.13-free" })
   })
-  test("zen/ prefix -> Zen endpoint", () => {
-    const ep = jevEndpointFromEnv({ JEV_MODEL: "zen/jev-1.13-free", OPENCODE_API_KEY: "k" } as any)
-    expect(ep).toEqual({ url: ZEN_JEV_URL, key: "k", model: "jev-1.13-free" })
-  })
-  test("TypeSafe keys are not read (opencode only)", () => {
-    expect(jevEndpointFromEnv({ JEV_MODEL: "jev-1.13", TS_API_KEY: "ts" } as any)).toBeNull()
-  })
-  test("empty JEV_MODEL -> org default (gateway free model)", () => {
-    expect(jevEndpointFromEnv({ JEV_MODEL: "", OPENCODE_API_KEY: "k" } as any)).toEqual(
-      expect.objectContaining({ url: OPENCODE_JEV_URL, model: DEFAULT_JEV_MODEL }),
-    )
-    expect(jevEndpointFromEnv({ OPENCODE_API_KEY: "k" } as any)).toEqual(
-      expect.objectContaining({ url: OPENCODE_JEV_URL, model: DEFAULT_JEV_MODEL }),
-    )
+  test("empty JEV_MODEL -> null (explicit config required)", () => {
+    expect(jevEndpointFromEnv({ JEV_MODEL: "", OPENCODE_API_KEY: "k" } as any)).toBeNull()
+    expect(jevEndpointFromEnv({ OPENCODE_API_KEY: "k" } as any)).toBeNull()
   })
   test("inputs.llm-api-key arrives as LLM_API_KEY", () => {
     const ep = jevEndpointFromEnv({ JEV_MODEL: "jev-1.13", LLM_API_KEY: "l" } as any)

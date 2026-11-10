@@ -220,10 +220,12 @@ runs:
         OPENCODE_CONFIG_CONTENT: '{"permission":"allow"}'
       run: |
         export PATH="$HOME/.opencode/bin:$PATH"
+        # MODEL is "<cli-model> <api-base-url>"; CLI takes the first token.
+        CLI_MODEL="${MODEL%% *}"
         if [ -n "${REVIEW_PROMPT}" ]; then
-          opencode run --agent github-bot --model "${MODEL}" "Mode: ${MODE}. Repository: ${REPOSITORY}. PR number: ${PR_NUMBER}. Issue number: ${ISSUE_NUMBER}. Read .opencode/pr-context.md for full context. Review prompt: ${REVIEW_PROMPT}"
+          opencode run --agent github-bot --model "${CLI_MODEL}" "Mode: ${MODE}. Repository: ${REPOSITORY}. PR number: ${PR_NUMBER}. Issue number: ${ISSUE_NUMBER}. Read .opencode/pr-context.md for full context. Review prompt: ${REVIEW_PROMPT}"
         else
-          opencode run --agent github-bot --model "${MODEL}" "Mode: ${MODE}. Repository: ${REPOSITORY}. PR number: ${PR_NUMBER}. Issue number: ${ISSUE_NUMBER}. If mode is review, read .opencode/pr-context.md and use the pr-review skill. If mode is fix-issue, read .opencode/issue-context.md and use the issue-fix skill."
+          opencode run --agent github-bot --model "${CLI_MODEL}" "Mode: ${MODE}. Repository: ${REPOSITORY}. PR number: ${PR_NUMBER}. Issue number: ${ISSUE_NUMBER}. If mode is review, read .opencode/pr-context.md and use the pr-review skill. If mode is fix-issue, read .opencode/issue-context.md and use the issue-fix skill."
         fi
     - name: Run intake triage (no-LLM except Jev)
       if: inputs.mode == 'intake'

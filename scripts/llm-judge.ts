@@ -5,7 +5,7 @@
  * split it via model-target.ts (bare id + provider base URL).
  * Only used by replay/eval, never in prod path.
  */
-import { apiTargetFor } from "./model-target"
+import { parseModelVar } from "./model-target"
 
 export interface JudgeScores {
   repo_fit: number
@@ -47,13 +47,11 @@ export async function llmJudge(
 ): Promise<JudgeScores> {
   const rawModel = (env.LLM_JUDGE_MODEL || env.OPENCODE_MODEL || "").trim();
   if (!rawModel) throw new Error("need LLM_JUDGE_MODEL or OPENCODE_MODEL");
-  const target = apiTargetFor(rawModel, (env.LLM_BASE_URL || "").trim());
-  // Bare ids (no provider) default to the OpenCode gateway; an explicit but
-  // unknown provider fails closed instead of silently hitting the gateway.
-  const baseUrl = target.baseUrl || (!target.provider ? "https://opencode.ai/inference/openai/v1" : "");
-  if (!baseUrl) throw new Error(`unknown model provider in ${rawModel} (need LLM_BASE_URL)`);
-  if (!target.model) throw new Error(`empty model id in ${rawModel}`);
-  const model = target.model;
+  const v = parseModelVar(rawModel);
+  // Single token (legacy) = bare API id, base from LLM_BASE_URL or gateway default.
+  const baseUrl = v.apiBase || (env.LLM_BASE_URL || "").trim() || "https://opencode.ai/inference/openai/v1";
+  if (!v.apiId) throw new Error(`empty model id in ${rawModel}`);
+  const model = v.apiId;
   const key = env.LLM_API_KEY || env.OPENCODE_API_KEY || "";
   if (!key) throw new Error("need LLM_API_KEY or OPENCODE_API_KEY");
   const state = [`NEW: ${title}\n${body.slice(0, 1500)}`,
