@@ -1,17 +1,19 @@
 /**
- * Dual-key routing: two lanes, one convention.
+ * Task routing (分流): one rule, two lanes.
  *
- * Lanes (stable roles; physical keys behind them can change without code changes):
+ * Shape of traffic, not number of keys: short interactive tasks and long
+ * batch tasks are routed to different lanes so they never block each other.
  *  - fast lane: short interactive tasks (Jev intake, llm-judge, probes).
  *  - bulk lane: long agent runs (review/fix-issue/split-plan, smoke, e2e).
  *
+ * Lane -> key mapping lives in env (see below); routing policy lives here.
  * Canonical secret names (org level):
  *  - fast lane: OPENCODE_API_KEY (legacy LLM_API_KEY accepted as alias)
  *  - bulk lane: OPENCODE_API_KEY_BULK
  * Optional overrides (win when set, e.g. per-repo routing or key rotation):
  *  - KEY_FAST, KEY_BULK
  *
- * Policy (see README "Dual keys"):
+ * Policy (see README "任务分流"):
  * - SHORT tasks: primary = fast lane, immediate failover to bulk on rate limit.
  *   A 10-minute task must never wait hours for a quota window.
  * - LONG tasks: bulk lane ONLY when configured (strict isolation protects the

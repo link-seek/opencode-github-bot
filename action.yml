@@ -242,9 +242,10 @@ runs:
         # MODEL is the unified variable (JSON {"cli","apiBase"}, legacy formats accepted).
         # CLI takes the extracted id verbatim; see scripts/model-cli.py.
         CLI_MODEL="$(python3 "${{ steps.pkgsrc.outputs.dir }}/scripts/model-cli.py" "$MODEL")"
-        # Long agent runs use the bulk lane (strict isolation protects the fast
-        # lane's guaranteed capacity); without a bulk key they use fast as before.
-        # Lane mapping itself is env-driven: KEY_BULK > OPENCODE_API_KEY_BULK,
+        # Task routing (分流): long agent runs go to the bulk lane (strict
+        # isolation protects the fast lane's guaranteed capacity); without a
+        # bulk key they use fast as before.
+        # Lane -> key mapping itself is env-driven: KEY_BULK > OPENCODE_API_KEY_BULK,
         # KEY_FAST > OPENCODE_API_KEY (> LLM_API_KEY); see scripts/keys.ts.
         BULK="${KEY_BULK:-$OPENCODE_API_KEY_BULK}"
         FAST="${KEY_FAST:-${OPENCODE_API_KEY:-$LLM_API_KEY}}"
