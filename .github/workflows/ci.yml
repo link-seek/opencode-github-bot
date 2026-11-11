@@ -25,11 +25,22 @@ jobs:
       - name: Smoke test — agent loads and responds
         env:
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          OPENCODE_API_KEY_BULK: ${{ secrets.OPENCODE_API_KEY_BULK }}
+          KEY_FAST: ${{ secrets.KEY_FAST }}
+          KEY_BULK: ${{ secrets.KEY_BULK }}
           OPENCODE_MODEL: ${{ vars.OPENCODE_MODEL }}
         run: |
           export PATH="$HOME/.opencode/bin:$PATH"
           # Unified variable (JSON {"cli","apiBase"}, legacy formats accepted).
           # Value passes through env (never interpolated verbatim into the command).
           CLI_MODEL="$(python3 scripts/model-cli.py "$OPENCODE_MODEL")"
+          # Long agent runs use the bulk lane (strict isolation protects the
+          # fast lane guaranteed capacity); without bulk configured, fall back
+          # to the fast lane. Lane mapping itself is env-driven (KEY_BULK >
+          # OPENCODE_API_KEY_BULK, KEY_FAST > OPENCODE_API_KEY).
+          BULK="${KEY_BULK:-$OPENCODE_API_KEY_BULK}"
+          FAST="${KEY_FAST:-$OPENCODE_API_KEY}"
+          if [ -n "$BULK" ]; then AGENT_KEY="$BULK"; else AGENT_KEY="$FAST"; fi
+          export OPENCODE_API_KEY="$AGENT_KEY"
           opencode run --agent github-bot --model "$CLI_MODEL" "What is 2+2? Reply with just the number." | tee /tmp/smoke.log
           grep -q "4" /tmp/smoke.log || { echo "Smoke test failed"; cat /tmp/smoke.log; exit 1; }

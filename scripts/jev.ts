@@ -10,6 +10,7 @@
  * Key: OPENCODE_API_KEY else inputs.llm-api-key. No key -> null (fail-closed).
  */
 import { parseModelVar } from "./model-target"
+import { isRateLimited, keysFor } from "./keys"
 export const DEFAULT_JEV_MODEL = "jev-1.13-free"
 export const DEFAULT_JEV_URL = "https://opencode.ai/inference/systemone/v1/systemone"
 
@@ -108,6 +109,8 @@ export const SCORE_LEVELS = { is_clear: 3, size: 4, priority: 4 } as const
 export interface JevEndpoint {
   url: string
   key: string
+  /** Failover key (B) for short tasks. Empty when failover is not configured. */
+  fallbackKey?: string
   model?: string
 }
 
@@ -123,9 +126,9 @@ export function jevEndpointFromEnv(env: NodeJS.ProcessEnv = process.env): JevEnd
   const t = resolveJevTarget(env.JEV_MODEL || "")
   if (!t) return null
   const { url, model } = t
-  const key = env.OPENCODE_API_KEY || env.LLM_API_KEY || ""
-  if (!key) return null
-  return { url, key, model }
+  const plan = keysFor(env, "short")
+  if (!plan.primary) return null
+  return { url, model, key: plan.primary, fallbackKey: plan.fallback || undefined }
 }
 
 function num(v: any, fb = 0): number {
@@ -133,7 +136,9 @@ function num(v: any, fb = 0): number {
   return Number.isFinite(n) ? n : fb
 }
 
-/** Call Jev once. Returns null when no key (caller skips semantic triage). */
+/** Call Jev once. Returns null when no key (caller skips semantic triage).
+ * Short-task failover: on rate-limit the call is retried once with the
+ * fallback key (B). A 10-minute task must never wait hours for a window. */
 export async function jevIntake(
   state: IntakeState,
   candidates: CandidateDoc[],
@@ -146,22 +151,36 @@ export async function jevIntake(
   const model = endpoint.model || DEFAULT_JEV_MODEL
   // opencode.ai sits behind Cloudflare, which bans default script UAs (403/1010).
   // Send a browser-grade UA like the verified probe does.
-  const res = await fetchFn(endpoint.url, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${endpoint.key}`,
-      "Content-Type": "application/json",
-      "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36",
-    },
-    body: JSON.stringify({
-      model,
-      state: buildJevState(state),
-      questions: buildJevQuestions(state.role, candidates),
-    }),
-  })
-  if (!res.ok) {
-    const t = await res.text().catch(() => "")
-    throw new Error(`jev: ${res.status} ${t.slice(0, 300)}`)
+  const callJev = (key: string) =>
+    fetchFn(endpoint.url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${key}`,
+        "Content-Type": "application/json",
+        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36",
+      },
+      body: JSON.stringify({
+        model,
+        state: buildJevState(state),
+        questions: buildJevQuestions(state.role, candidates),
+      }),
+    })
+  let res: any
+  try {
+    res = await callJev(endpoint.key)
+    if (!res.ok) {
+      const t = await res.text().catch(() => "")
+      throw new Error(`jev: ${res.status} ${t.slice(0, 300)}`)
+    }
+  } catch (e) {
+    if (!endpoint.fallbackKey || !isRateLimited(e)) throw e
+    console.log(`jev rate-limited on primary key, failing over to backup key`)
+    const retry = await callJev(endpoint.fallbackKey)
+    if (!retry.ok) {
+      const t = await retry.text().catch(() => "")
+      throw new Error(`jev: ${retry.status} ${t.slice(0, 300)}`)
+    }
+    res = retry
   }
   const data = await res.json().catch(() => {
     throw new Error("jev: non-JSON 2xx response")

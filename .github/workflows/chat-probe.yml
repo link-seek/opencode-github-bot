@@ -17,6 +17,9 @@ jobs:
         env:
           CHAT_MODEL_INPUT: ${{ inputs.chat-model }}
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          OPENCODE_API_KEY_BULK: ${{ secrets.OPENCODE_API_KEY_BULK }}
+          KEY_FAST: ${{ secrets.KEY_FAST }}
+          KEY_BULK: ${{ secrets.KEY_BULK }}
         run: |
           set -euo pipefail
           MODEL="${CHAT_MODEL_INPUT:?need chat-model input}"
@@ -56,9 +59,11 @@ jobs:
           python3 - "$CHAT_URL" "$MODEL_ID" "$SESSION_HDR" <<'EOF' > /tmp/chat-probe.json
           import json, os, sys, urllib.request, urllib.error
           url, model = sys.argv[1], sys.argv[2]
-          key = os.environ.get("OPENCODE_API_KEY", "")
-          if not key:
-              print("missing OPENCODE_API_KEY", file=sys.stderr)
+          fast = os.environ.get("KEY_FAST", "") or os.environ.get("OPENCODE_API_KEY", "")
+          bulk = os.environ.get("KEY_BULK", "") or os.environ.get("OPENCODE_API_KEY_BULK", "")
+          keys = [k for k in [fast, bulk] if k]
+          if not keys:
+              print("missing OPENCODE_API_KEY (fast lane)", file=sys.stderr)
               raise SystemExit(1)
           extra = [a for a in sys.argv[3:] if a]
           body = json.dumps({
@@ -66,27 +71,34 @@ jobs:
               "messages": [{"role": "user", "content": "reply with exactly: OK"}],
               "max_tokens": 200,
           }).encode()
-          headers = {"Content-Type": "application/json",
-                     # opencode.ai sits behind Cloudflare, which bans Python-urllib's
-                     # default UA (403/error 1010). curl UA is verified to pass.
-                     "User-Agent": "curl/8.5.0",
-                     "Authorization": f"Bearer {key}"}
-          for h in extra:
-              k, _, v = h.partition(":")
-              headers[k.strip()] = v.strip()
-          url = url.rstrip("/") + "/chat/completions"
-          req = urllib.request.Request(url, data=body, headers=headers)
-          try:
-              resp = urllib.request.urlopen(req, timeout=60)
-              print(resp.read().decode(), end="")
-          except urllib.error.HTTPError as e:
-              print(f"HTTP {e.code}: {e.read().decode(errors='replace')[:1000]}", file=sys.stderr)
-              print(f"HTTP {e.code}", end="")
-              raise SystemExit(1)
-          except Exception as e:
-              print(f"REQUEST FAILED: {type(e).__name__}: {e}", file=sys.stderr)
-              print("REQUEST FAILED", end="")
-              raise SystemExit(1)
+          def attempt(key):
+              headers = {"Content-Type": "application/json",
+                         # opencode.ai sits behind Cloudflare, which bans Python-urllib's
+                         # default UA (403/error 1010). curl UA is verified to pass.
+                         "User-Agent": "curl/8.5.0",
+                         "Authorization": f"Bearer {key}"}
+              for h in extra:
+                  k, _, v = h.partition(":")
+                  headers[k.strip()] = v.strip()
+              url2 = url.rstrip("/") + "/chat/completions"
+              req = urllib.request.Request(url2, data=body, headers=headers)
+              return urllib.request.urlopen(req, timeout=60).read().decode()
+          for i, key in enumerate(keys):
+              try:
+                  print(attempt(key), end="")
+                  break
+              except urllib.error.HTTPError as e:
+                  msg = f"HTTP {e.code}: {e.read().decode(errors='replace')[:300]}"
+                  print(f"key[{i}] {msg}", file=sys.stderr)
+                  if e.code != 429 or i == len(keys) - 1:
+                      print(msg, end="")
+                      raise SystemExit(1)
+                  print("rate-limited, failing over to backup key", file=sys.stderr)
+              except Exception as e:
+                  msg = f"REQUEST FAILED: {type(e).__name__}: {e}"
+                  print(msg, file=sys.stderr)
+                  print(msg, end="")
+                  raise SystemExit(1)
           EOF
           head -c 800 /tmp/chat-probe.json; echo
           python3 -c "import json; d=json.load(open('/tmp/chat-probe.json')); m=d['choices'][0]['message']; t=((m.get('content') or '')+' '+str(m.get('reasoning_content') or '')); print('reply=',t.strip()[:120]); assert 'OK' in t.upper(), 'probe failed'"
