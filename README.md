@@ -99,6 +99,14 @@ Rules (enforced in code, not just prompting): one sub-issue = one finish-fix run
 (≤3 files); max 5 subs, else the planner must reject; no dependency cycles;
 apply is idempotent (same-title open children are reused). See [#10](https://github.com/link-seek/opencode-github-bot/issues/10).
 
+## 任务分流 (routing, not "dual-key")
+
+按任务形态分流，短交互与长批处理互不挡路：
+- fast lane：Jev intake、llm-judge、探针（单次 API 调用）。撞 429 立刻切 bulk lane 重试一次，10 分钟任务不等 quota 窗口。
+- bulk lane：review / fix-issue / split-plan 等 agent 长任务、smoke、e2e。有 bulk key 时只用 bulk（撞限则等，不回切 fast）；无 bulk 时回落 fast（单 key 老环境不断）。
+
+lane 到 key 的映射放 env（`OPENCODE_API_KEY` = fast，`OPENCODE_API_KEY_BULK` = bulk，`KEY_FAST` / `KEY_BULK` 可选覆盖），路由策略放代码（`scripts/keys.ts` 的 `keysFor(env, "short"|"long")`）。加订阅、轮换 key、以后按模型/按 endpoint 分，都只改 env 不改代码。
+
 ## Status
 
 v0.3.0: + pm-intake (Jev 6-question triage, docs-aligned, strict CF child tokens). Trusted Publishing (OIDC) enabled.

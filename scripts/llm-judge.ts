@@ -90,7 +90,7 @@ export async function llmJudge(
     }
   } catch (e) {
     if (!plan.fallback || !isRateLimited(e)) throw e;
-    console.log(`llm-judge rate-limited on primary key, failing over to backup key`);
+    console.log(`llm-judge rate-limited on fast lane, failing over to bulk lane`);
     const retry = await callJudge(plan.fallback);
     if (!retry.ok) {
       const t = await retry.text().catch(() => "");

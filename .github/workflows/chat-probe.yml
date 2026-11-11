@@ -93,7 +93,7 @@ jobs:
                   if e.code != 429 or i == len(keys) - 1:
                       print(msg, end="")
                       raise SystemExit(1)
-                  print("rate-limited, failing over to backup key", file=sys.stderr)
+                  print("rate-limited, failing over to bulk lane", file=sys.stderr)
               except Exception as e:
                   msg = f"REQUEST FAILED: {type(e).__name__}: {e}"
                   print(msg, file=sys.stderr)

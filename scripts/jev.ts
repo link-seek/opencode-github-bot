@@ -109,7 +109,7 @@ export const SCORE_LEVELS = { is_clear: 3, size: 4, priority: 4 } as const
 export interface JevEndpoint {
   url: string
   key: string
-  /** Failover key (B) for short tasks. Empty when failover is not configured. */
+  /** Failover key (bulk lane) for short tasks. Empty when failover is not configured. */
   fallbackKey?: string
   model?: string
 }
@@ -137,8 +137,8 @@ function num(v: any, fb = 0): number {
 }
 
 /** Call Jev once. Returns null when no key (caller skips semantic triage).
- * Short-task failover: on rate-limit the call is retried once with the
- * fallback key (B). A 10-minute task must never wait hours for a window. */
+ * Short-task routing: on rate-limit the call is retried once on the
+ * bulk lane. A 10-minute task must never wait hours for a window. */
 export async function jevIntake(
   state: IntakeState,
   candidates: CandidateDoc[],
@@ -174,7 +174,7 @@ export async function jevIntake(
     }
   } catch (e) {
     if (!endpoint.fallbackKey || !isRateLimited(e)) throw e
-    console.log(`jev rate-limited on primary key, failing over to backup key`)
+    console.log(`jev rate-limited on fast lane, failing over to bulk lane`)
     const retry = await callJev(endpoint.fallbackKey)
     if (!retry.ok) {
       const t = await retry.text().catch(() => "")
