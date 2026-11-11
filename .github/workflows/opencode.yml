@@ -39,6 +39,9 @@ jobs:
         uses: ./
         env:
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          OPENCODE_API_KEY_BULK: ${{ secrets.OPENCODE_API_KEY_BULK }}
+          KEY_FAST: ${{ secrets.KEY_FAST }}
+          KEY_BULK: ${{ secrets.KEY_BULK }}
           JEV_MODEL: ${{ vars.JEV_MODEL }}
         with:
           model: ${{ vars.OPENCODE_MODEL }}
@@ -75,6 +78,11 @@ jobs:
       - name: Run OpenCode (review)
         if: github.event_name != 'issues' && github.event_name != 'workflow_dispatch' && !contains(github.event.comment.body, 'approve split')
         uses: ./
+        env:
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          OPENCODE_API_KEY_BULK: ${{ secrets.OPENCODE_API_KEY_BULK }}
+          KEY_FAST: ${{ secrets.KEY_FAST }}
+          KEY_BULK: ${{ secrets.KEY_BULK }}
         with:
           model: ${{ vars.OPENCODE_MODEL }}
           package-source: ${{ github.ref == 'refs/heads/main' && 'npm' || 'repo' }}
@@ -90,6 +98,11 @@ jobs:
       - name: Run OpenCode (issue fix)
         if: github.event_name == 'issues'
         uses: ./
+        env:
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          OPENCODE_API_KEY_BULK: ${{ secrets.OPENCODE_API_KEY_BULK }}
+          KEY_FAST: ${{ secrets.KEY_FAST }}
+          KEY_BULK: ${{ secrets.KEY_BULK }}
         with:
           model: ${{ vars.OPENCODE_MODEL }}
           package-source: ${{ github.ref == 'refs/heads/main' && 'npm' || 'repo' }}
@@ -102,6 +115,11 @@ jobs:
       - name: Run split plan (manual)
         if: github.event_name == 'workflow_dispatch' && (github.event.inputs.mode == '' || github.event.inputs.mode == 'split-plan')
         uses: ./
+        env:
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          OPENCODE_API_KEY_BULK: ${{ secrets.OPENCODE_API_KEY_BULK }}
+          KEY_FAST: ${{ secrets.KEY_FAST }}
+          KEY_BULK: ${{ secrets.KEY_BULK }}
         with:
           model: ${{ vars.OPENCODE_MODEL }}
           llm-api-key: ${{ secrets.OPENCODE_API_KEY }}
@@ -114,6 +132,11 @@ jobs:
         # wording and must never self-trigger (dogfood #46 proved it does).
         if: (github.event_name == 'issue_comment' || github.event_name == 'pull_request_review_comment') && contains(github.event.comment.body, 'approve split') && !contains(github.event.comment.body, 'pm-split-plan')
         uses: ./
+        env:
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          OPENCODE_API_KEY_BULK: ${{ secrets.OPENCODE_API_KEY_BULK }}
+          KEY_FAST: ${{ secrets.KEY_FAST }}
+          KEY_BULK: ${{ secrets.KEY_BULK }}
         with:
           model: ${{ vars.OPENCODE_MODEL }}
           llm-api-key: ${{ secrets.OPENCODE_API_KEY }}

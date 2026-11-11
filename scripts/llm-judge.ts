@@ -6,6 +6,7 @@
  * Only used by replay/eval, never in prod path.
  */
 import { parseModelVar } from "./model-target"
+import { isRateLimited, keysFor } from "./keys"
 
 export interface JudgeScores {
   repo_fit: number
@@ -52,8 +53,9 @@ export async function llmJudge(
   const baseUrl = v.apiBase || (env.LLM_BASE_URL || "").trim() || "https://opencode.ai/inference/openai/v1";
   if (!v.apiId) throw new Error(`empty model id in ${rawModel}`);
   const model = v.apiId;
-  const key = env.LLM_API_KEY || env.OPENCODE_API_KEY || "";
-  if (!key) throw new Error("need LLM_API_KEY or OPENCODE_API_KEY");
+  const plan = keysFor(env, "short");
+  if (!plan.primary) throw new Error("need LLM_API_KEY or OPENCODE_API_KEY");
+  const key = plan.primary;
   // Go subscription endpoints (/inference/go/...) require a session id header.
   const headers: Record<string, string> = {
     Authorization: `Bearer ${key}`,
@@ -68,17 +70,34 @@ export async function llmJudge(
     ...candidates.slice(0, 10).map((c) => `#${c.number}: ${c.title} — ${c.summary}`)].join("\n");
   const prompt = PROMPT.replace("__ROLE__", role).replace("__STATE__", state);
   const t0 = Date.now();
-  const res = await fetchFn(`${baseUrl}/chat/completions`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({
-      model,
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0,
-      response_format: { type: "json_object" },
-    }),
-  });
-  if (!res.ok) throw new Error(`llm-judge: ${res.status} ${(await res.text().catch(() => "")).slice(0, 500)}`);
+  const callJudge = (k: string) =>
+    fetchFn(`${baseUrl}/chat/completions`, {
+      method: "POST",
+      headers: { ...headers, Authorization: `Bearer ${k}` },
+      body: JSON.stringify({
+        model,
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0,
+        response_format: { type: "json_object" },
+      }),
+    });
+  let res: any;
+  try {
+    res = await callJudge(key);
+    if (!res.ok) {
+      const t = await res.text().catch(() => "");
+      throw new Error(`llm-judge: ${res.status} ${t.slice(0, 500)}`);
+    }
+  } catch (e) {
+    if (!plan.fallback || !isRateLimited(e)) throw e;
+    console.log(`llm-judge rate-limited on primary key, failing over to backup key`);
+    const retry = await callJudge(plan.fallback);
+    if (!retry.ok) {
+      const t = await retry.text().catch(() => "");
+      throw new Error(`llm-judge: ${retry.status} ${t.slice(0, 500)}`);
+    }
+    res = retry;
+  }
   const data = await res.json().catch(() => {
     throw new Error("llm-judge: non-JSON 2xx response");
   }) as any;
