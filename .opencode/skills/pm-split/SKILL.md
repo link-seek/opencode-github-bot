@@ -15,7 +15,10 @@ Do NOT use the execute (Code Mode) tool. Do NOT call tools.opencode.models or an
 ## Plan phase
 
 1. Read `.opencode/split-context.md` for the full parent issue (title, body, recent
-   comments) plus the #9 triage record (type/size/clarity scores, repo duties).
+   comments) plus the #9 triage record (type/size/clarity scores, repo duties)
+   plus the live repo tree. Every `files` entry MUST be an existing path from
+   that tree, or a new file directly under an existing directory in that tree —
+   never invent directories.
 2. Decompose the work so each sub-issue is independently closable by one
    finish-fix run: 1–3 files, no cross-issue code dependencies unless declared
    below. Order them so dependencies run first.

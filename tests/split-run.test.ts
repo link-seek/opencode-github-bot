@@ -4,6 +4,7 @@ import {
   findSplitPlan,
   ghStatus,
   isDuplicateDraft,
+  listRepoTree,
   parseIntakeMarker,
   parseSplitPlanMarker,
   renderDraft,
@@ -199,5 +200,21 @@ describe("rendering", () => {
     expect(ghStatus(new Error("gh /repos/x/issues/1: 404 Not Found"))).toBe(404)
     expect(ghStatus(new Error("boom"))).toBeNull()
     expect(ghStatus(null)).toBeNull()
+  })
+  test("listRepoTree lists real paths only, skips .git/node_modules", async () => {
+    const fs = await import("node:fs")
+    const os = await import("node:os")
+    const path = await import("node:path")
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "tree-"))
+    fs.mkdirSync(path.join(root, "scripts"))
+    fs.writeFileSync(path.join(root, "scripts", "a.ts"), "x")
+    fs.mkdirSync(path.join(root, ".git"))
+    fs.writeFileSync(path.join(root, ".git", "HEAD"), "x")
+    fs.mkdirSync(path.join(root, "node_modules"))
+    const tree = await listRepoTree(root)
+    expect(tree).toContain("scripts/")
+    expect(tree).toContain("scripts/a.ts")
+    expect(tree.some((p) => p.includes(".git") || p.includes("node_modules"))).toBe(false)
+    fs.rmSync(root, { recursive: true })
   })
 })

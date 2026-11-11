@@ -366,6 +366,40 @@ async function listComments(repo: string, n: number, token: string, why: string)
     return []
   }
 }
+/* Live repo tree for the planner: deterministic, fresh every run, so the
+ * plan can only reference paths that actually exist (no hallucinated dirs).
+ * Best-effort: on any fs error returns a one-line notice, never throws. */
+export async function listRepoTree(root: string, cap = 500): Promise<string[]> {
+  try {
+    const fs = await import("node:fs")
+    const path = await import("node:path")
+    const skip = new Set([".git", "node_modules", ".opencode", "dist", "build", "coverage"])
+    const out: string[] = []
+    const walk = (dir: string, prefix: string) => {
+      let ents: any[]
+      try {
+        ents = fs.readdirSync(dir, { withFileTypes: true }) as any[]
+      } catch { return }
+      ents.sort((a, b) => String(a.name).localeCompare(String(b.name)))
+      for (const e of ents) {
+        if (out.length >= cap) return
+        const name = String(e.name)
+        if (name.startsWith("." ) && name !== ".github" && name !== ".opencode") continue
+        if (skip.has(name)) continue
+        const rel = prefix ? `${prefix}/${name}` : name
+        const full = path.join(dir, name)
+        let isDir = false
+        try { isDir = fs.statSync(full).isDirectory() } catch { continue }
+        out.push(isDir ? `${rel}/` : rel)
+        if (isDir) walk(full, rel)
+      }
+    }
+    walk(root, "")
+    return out.length ? out : ["(empty repo root)"]
+  } catch (e) {
+    return [`(tree unavailable: ${String((e as Error)?.message ?? e).slice(0, 120)})`]
+  }
+}
 /* Best-effort native sub-issue links. Logs linked/skipped counts.
  * NOTE: the sub-issues API takes the global issue id, NOT the per-repo number. */
 async function linkChildren(
@@ -448,6 +482,7 @@ async function runPlanPre(env: NodeJS.ProcessEnv): Promise<void> {
     return
   }
   const comments = await listComments(repo, n, token, "plan-pre context")
+  const tree = await listRepoTree(process.cwd())
   const ctx = [
     `# Split context: #${n} ${String(issue.title ?? "")}`,
     ``,
@@ -463,6 +498,11 @@ async function runPlanPre(env: NodeJS.ProcessEnv): Promise<void> {
     ``,
     `## Recent comments (latest 5)`,
     ...comments.slice(-5).map((c: any) => `### @${c.user?.login}\n${String(c.body ?? "").slice(0, 1500)}`),
+    ``,
+    `## Live repo tree (ground truth: sub-issue "files" MUST be chosen from these paths only)`,
+    "```",
+    ...tree,
+    "```",
     ``,
     `## Output contract`,
     `Write pm-split-plan.json in the current directory per the pm-split skill. Do NOT comment or create issues.`,
