@@ -7,7 +7,7 @@
  */
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync } from "node:fs"
-import { join, dirname } from "node:path"
+import { join, dirname, resolve, relative, sep } from "node:path"
 
 export type RepoType = "node" | "python" | "go" | "rust" | "java" | "dotnet" | "generic"
 
@@ -250,7 +250,11 @@ export async function runInit(options: InitOptions = {}): Promise<InitResult> {
   const workflowPath = options.workflowPath || ".github/workflows/opencode.yml"
   const content = generateWorkflow({ ...options, repoType })
   const missing = listMissing(options.env)
-  const full = join(cwd, workflowPath)
+  const full = resolve(cwd, workflowPath)
+  const rel = relative(cwd, full)
+  if (workflowPath.trim() === "" || rel === "" || rel === ".." || rel.startsWith(`..${sep}`)) {
+    throw new Error(`refusing to write outside repo root: ${workflowPath}`)
+  }
   let written = false
   if (options.write) {
     if (existsSync(full) && !options.force) {
