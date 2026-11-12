@@ -182,9 +182,20 @@ export default Plugin.define({
           try { endSpan(taskSpan) } catch { /* ignore */ }
           flushLaminar().catch(() => {})
         }
+        // Flush with a timeout before exiting, otherwise in-flight traces are dropped.
+        const finishAndExit = (code: number) => {
+          let done = false
+          const bye = () => { if (!done) { done = true; process.exit(code) } }
+          try { endSpan(taskSpan) } catch { /* ignore */ }
+          Promise.resolve()
+            .then(() => flushLaminar())
+            .catch(() => {})
+            .then(bye, bye)
+          setTimeout(bye, 5000).unref?.()
+        }
         process.on("beforeExit", finish)
-        process.on("SIGTERM", () => { finish(); process.exit(0) })
-        process.on("SIGINT", () => { finish(); process.exit(0) })
+        process.on("SIGTERM", () => finishAndExit(0))
+        process.on("SIGINT", () => finishAndExit(0))
       }
     } catch {
       // tracing must never block main flow

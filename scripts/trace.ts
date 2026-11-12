@@ -83,21 +83,33 @@ export async function withSpan<T>(
       ? Laminar.startSpan({ name, metadata: attrs, spanType: "DEFAULT" })
       : null
     if (!span) return await fn()
-    if (typeof Laminar.setSpanAttributes === "function") {
-      try { Laminar.setSpanAttributes(attrs as any) } catch { /* ignore */ }
+    try {
+      if (typeof Laminar.setSpanAttributes === "function") Laminar.setSpanAttributes(attrs as any)
+    } catch {
+      /* ignore attribute errors */
     }
-    return await Laminar.withSpan(span, async () => {
+    // fn runs EXACTLY once below: its errors propagate (never re-run);
+    // post-fn tracing errors are swallowed (fn already succeeded).
+    let result: T
+    try {
+      result = await Laminar.withSpan(span, async () => await fn(), true)
+    } catch (e) {
       try {
-        const res = await fn()
-        try { if (typeof Laminar.setSpanOutput === "function") Laminar.setSpanOutput(res) } catch { /* ignore */ }
-        return res
-      } catch (e) {
-        try { if (typeof span.recordException === "function") span.recordException(e as any) } catch { /* ignore */ }
-        throw e
+        if (typeof span.recordException === "function") span.recordException(e as any)
+      } catch {
+        /* ignore */
       }
-    }, true)
+      throw e
+    }
+    try {
+      if (typeof Laminar.setSpanOutput === "function") Laminar.setSpanOutput(result)
+    } catch {
+      /* output-recording failed after fn succeeded: keep result */
+    }
+    return result
   } catch {
-    // Never break main flow because of tracing.
+    // Tracing infra failed before fn ran: naked run, exactly once.
+    // (fn errors never reach here — they propagate from the inner try.)
     return await fn()
   }
 }
