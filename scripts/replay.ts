@@ -114,8 +114,8 @@ void SCORE_LEVELS
 
 // Flush traces before exit: short-lived process, nothing else will.
 try {
-  const { flushLaminar } = await import("./trace")
-  await flushLaminar()
+  const { flushSoon } = await import("./trace")
+  await flushSoon()
 } catch {
   /* tracing must never break eval */
 }

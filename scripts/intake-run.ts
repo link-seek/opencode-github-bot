@@ -303,13 +303,17 @@ async function postComment(repo: string, n: number, token: string, body: string)
 }
 
 if (import.meta.main) {
-  const res = await runIntake()
-  // Flush traces before exit: short-lived process, nothing else will.
+  let res: Awaited<ReturnType<typeof runIntake>> | undefined
   try {
-    const { flushLaminar } = await import("./trace")
-    await flushLaminar()
-  } catch {
-    /* tracing must never break the run */
+    res = await runIntake()
+  } finally {
+    // Flush even on failure (partial-run spans), bounded so exit is never stuck.
+    try {
+      const { flushSoon } = await import("./trace")
+      await flushSoon()
+    } catch {
+      /* tracing must never break the run */
+    }
   }
-  console.log(JSON.stringify({ decision: res.decision, labels: res.labels }))
+  console.log(JSON.stringify({ decision: res?.decision, labels: res?.labels }))
 }

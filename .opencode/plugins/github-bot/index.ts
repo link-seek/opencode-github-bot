@@ -175,17 +175,22 @@ export default Plugin.define({
     }
     const withTimeout = (p: Promise<unknown>, ms: number) =>
       Promise.race([p, new Promise((resolve) => setTimeout(resolve, ms))])
-    const finishAndExit = (code: number) => {
-      withTimeout(flushSoon(), 5000).then(() => process.exit(code))
+    // Run-once guard: beforeExit refires whenever the loop drains; without
+    // the guard the handler would reschedule itself forever and hang exit.
+    let exitFlushed = false
+    const flushOnce = async () => {
+      if (exitFlushed) return
+      exitFlushed = true
+      await withTimeout(flushSoon(), 5000)
     }
     try {
       if (laminarEnabled()) {
         await initLaminar()
-        // beforeExit: schedule flush work; the pending I/O + timer keep the
-        // loop alive until done (bounded by the timeout).
-        process.on("beforeExit", async () => { await withTimeout(flushSoon(), 5000) })
-        process.on("SIGTERM", () => finishAndExit(0))
-        process.on("SIGINT", () => finishAndExit(0))
+        // beforeExit: schedule flush work; the pending I/O keeps the loop
+        // alive until done (bounded by the timeout + run-once guard).
+        process.on("beforeExit", flushOnce)
+        process.on("SIGTERM", () => { flushOnce().then(() => process.exit(0)) })
+        process.on("SIGINT", () => { flushOnce().then(() => process.exit(0)) })
       }
     } catch {
       // tracing must never block main flow

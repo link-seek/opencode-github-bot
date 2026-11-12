@@ -62,6 +62,18 @@ export async function flushLaminar(): Promise<void> {
     /* ignore */
   }
 }
+
+/** Flush with a hard cap so tracing can never block process exit. */
+export async function flushSoon(ms = 5000): Promise<void> {
+  try {
+    await Promise.race([
+      flushLaminar(),
+      new Promise((resolve) => setTimeout(resolve, ms)),
+    ])
+  } catch {
+    /* ignore */
+  }
+}
 export const flushTrace = flushLaminar
 export const flushTraces = flushLaminar
 export const flushTracing = flushLaminar
