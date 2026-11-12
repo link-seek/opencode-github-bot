@@ -17,7 +17,7 @@ on:
 
 jobs:
   review:
-    uses: link-seek/opencode-github-bot/.github/workflows/review.yml@v0.5.0
+    uses: link-seek/opencode-github-bot/.github/workflows/review.yml@v0.6.0
     with:
       mode: review
       model: ${{ vars.OPENCODE_MODEL }}   # optional override
