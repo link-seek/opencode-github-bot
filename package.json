@@ -4,9 +4,13 @@
   "description": "OpenCode v2 GitHub bot: composite action + server plugin for PR review and issue fix",
   "type": "module",
   "main": ".opencode/plugins/github-bot/index.ts",
+  "bin": {
+    "opencode-github-bot": "lib/cli.js"
+  },
   "files": [
     ".opencode/",
     "scripts/",
+    "lib/",
     "action.yml",
     "README.md"
   ],
@@ -30,7 +34,10 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "bun test"
+    "test": "bun test",
+    "build": "tsc scripts/cli.ts scripts/init.ts --outDir lib --module nodenext --target esnext --moduleResolution nodenext --skipLibCheck",
+    "prepack": "npm run build",
+    "init": "bun scripts/cli.ts init"
   },
   "devDependencies": {
     "@types/bun": "latest",

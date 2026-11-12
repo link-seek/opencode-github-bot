@@ -6,6 +6,28 @@ Built on OpenCode v2's plugin system (`@opencode/plugin`). Does not modify OpenC
 
 ## Usage
 
+### Option A: reusable workflow (recommended, one job)
+
+```yaml
+# .github/workflows/opencode.yml
+name: opencode
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review]
+
+jobs:
+  review:
+    uses: link-seek/opencode-github-bot/.github/workflows/review.yml@v0.5.0
+    with:
+      mode: review
+      model: ${{ vars.OPENCODE_MODEL }}   # optional override
+    secrets: inherit
+```
+
+Version is centrally locked in the reusable workflow; upgrading only changes the tag.
+
+### Option B: composite action (advanced)
+
 ```yaml
 # .github/workflows/opencode.yml
 name: opencode
@@ -34,6 +56,13 @@ jobs:
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
 ```
 
+## One-click setup
+
+```bash
+npx opencode-github-bot init
+```
+
+Detects repo type, writes `.github/workflows/opencode.yml`, and lists any missing secrets/vars (`AGENT_GITHUB_TOKEN`, `OPENCODE_API_KEY`, `OPENCODE_MODEL`) instead of skipping them.
 ## Plugin
 
 Add to `opencode.json(c)`:
