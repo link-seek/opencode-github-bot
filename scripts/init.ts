@@ -8,6 +8,7 @@
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync } from "node:fs"
 import { join, dirname, resolve, relative, sep } from "node:path"
+import { fileURLToPath } from "node:url"
 
 export type RepoType = "node" | "python" | "go" | "rust" | "java" | "dotnet" | "generic"
 
@@ -16,6 +17,31 @@ export const REQUIRED_VARS = ["OPENCODE_MODEL"] as const
 export const OPTIONAL_SECRETS = ["OPENCODE_API_KEY_BULK"] as const
 export const OPTIONAL_VARS = ["JEV_MODEL"] as const
 export const REUSABLE_WORKFLOW = "link-seek/opencode-github-bot/.github/workflows/review.yml"
+
+/** Resolve the current package version from the nearest package.json (source or built lib). */
+function resolvePackageVersion(): string {
+  let dir = dirname(fileURLToPath(import.meta.url))
+  for (let i = 0; i < 8; i++) {
+    try {
+      const raw = readFileSync(resolve(dir, "package.json"), "utf8")
+      const pkg = JSON.parse(raw) as { name?: string; version?: string }
+      if (pkg?.name === "opencode-github-bot" && typeof pkg.version === "string" && pkg.version.trim() !== "") {
+        return pkg.version.trim()
+      }
+    } catch {
+      // keep searching upward
+    }
+    const parent = resolve(dir, "..")
+    if (parent === dir) break
+    dir = parent
+  }
+  return "0.6.0"
+}
+
+export const PACKAGE_VERSION = resolvePackageVersion()
+export const DEFAULT_VERSION = `v${PACKAGE_VERSION}`
+export const DEFAULT_BOT_VERSION = DEFAULT_VERSION
+export const DEFAULT_WORKFLOW_VERSION = DEFAULT_VERSION
 
 export interface InitOptions {
   cwd?: string
@@ -190,9 +216,9 @@ export function generateWorkflow(options: InitOptions | string | undefined = {})
   if (!/^(\$\{\{\s*vars\.[A-Za-z0-9_]+\s*\}\}|[A-Za-z0-9._@/-]+)$/.test(model)) {
     throw new Error(`unsafe model: ${JSON.stringify(model).slice(0, 80)}`)
   }
-  const version = safeToken(opts.version || "v0.5.0", "version")
+  const version = safeToken(opts.version || DEFAULT_VERSION, "version")
   const modelLine = `      model: ${model}`
-  const versionLine = version === "v0.5.0" ? "" : `      bot-version: ${version}\n`
+  const versionLine = version === DEFAULT_VERSION ? "" : `      bot-version: ${version}\n`
   return `name: opencode
 
 on:

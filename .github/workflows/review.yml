@@ -4,7 +4,7 @@ name: opencode review (reusable)
 # Consumer repos only need:
 #   jobs:
 #     review:
-#       uses: link-seek/opencode-github-bot/.github/workflows/review.yml@v0.5.0
+#       uses: link-seek/opencode-github-bot/.github/workflows/review.yml@v0.6.0
 #       with:
 #         mode: review          # optional, defaults to review
 #         model: ${{ vars.OPENCODE_MODEL }}  # optional override
@@ -38,7 +38,7 @@ on:
       bot-version:
         description: "Bot repo ref (tag/SHA) providing the composite action"
         required: false
-        default: "v0.5.0"
+        default: "v0.6.0"
         type: string
     secrets:
       AGENT_GITHUB_TOKEN:
