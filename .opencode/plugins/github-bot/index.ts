@@ -190,7 +190,7 @@ export default Plugin.define({
         }
         // beforeExit: schedule flush work; the pending I/O + timer keep the
         // loop alive until done (bounded by the timeout).
-        process.on("beforeExit", () => { withTimeout(flushSoon(), 5000) })
+        process.on("beforeExit", async () => { await withTimeout(flushSoon(), 5000) })
         process.on("SIGTERM", () => finishAndExit(0))
         process.on("SIGINT", () => finishAndExit(0))
       }

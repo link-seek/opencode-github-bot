@@ -98,6 +98,7 @@ export async function withSpan<T>(
   // infra-vs-fn distinction below: fn errors reach the CALLER, infra
   // failures before fn fall back to a naked run. Either way fn runs once.
   let result: T | undefined
+  let captured: T | undefined
   let invoked = false
   let finished = false
   try {
@@ -106,6 +107,7 @@ export async function withSpan<T>(
       async () => {
         invoked = true
         const res = await fn()
+        captured = res
         try {
           if (typeof Laminar.setSpanOutput === "function") Laminar.setSpanOutput(res)
         } catch {
@@ -117,7 +119,7 @@ export async function withSpan<T>(
       true,
     )
   } catch (e) {
-    if (finished) return result as T // teardown blew after fn: keep result
+    if (finished) return captured as T // teardown blew after fn: keep value
     if (!invoked) return await fn() // infra died before fn: safe naked retry
     try {
       if (typeof span.recordException === "function") span.recordException(e as any)
