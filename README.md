@@ -147,3 +147,4 @@ Optional: bot runs can push traces to [Laminar](https://laminar.sh) for visibili
 ## Status
 
 v0.3.0: + pm-intake (Jev 6-question triage, docs-aligned, strict CF child tokens). Trusted Publishing (OIDC) enabled.
+# E2E test
