@@ -29,7 +29,7 @@ export async function searchTopCandidates(
 ): Promise<SearchDoc[]> {
   const q = `repo:${repo} ${query} in:title,body`.slice(0, 256)
   const res = await fetchFn(
-    `https://api.github.com/search/issues?q=${encodeURIComponent(q)}&per_page=${k}&sort=updated&order=desc`,
+    `${(process.env.GITHUB_API_URL || "https://api.github.com").replace(/\/+$/, "")}/search/issues?q=${encodeURIComponent(q)}&per_page=${k}&sort=updated&order=desc`,
     {
       headers: {
         Accept: "application/vnd.github+json",

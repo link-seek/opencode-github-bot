@@ -3,7 +3,21 @@
  * Format spec mirrors OpenHands pr-review (agent_script.py) + nonce fence.
  */
 
-const GITHUB_API = "https://api.github.com"
+function githubApiBase(): string {
+  return (process.env.GITHUB_API_URL || "https://api.github.com").replace(/\/+$/, "")
+}
+
+/**
+ * GraphQL endpoint for the configured API base.
+ * github.com/GHEC: <base>/graphql. GHES REST base is <host>/api/v3
+ * while GraphQL lives at <host>/api/graphql.
+ */
+export function githubGraphqlEndpoint(envBase?: string): string {
+  const base = (envBase ?? process.env.GITHUB_API_URL ?? "https://api.github.com").replace(/\/+$/, "")
+  const m = base.match(/^(https?:\/\/[^/]+)\/api\/v3$/)
+  if (m) return `${m[1]}/api/graphql`
+  return `${base}/graphql`
+}
 const MAX_PER_FILE = 8_000
 const MAX_TOTAL_DIFF = 100_000
 const MAX_REVIEW_CONTEXT = 30_000
@@ -27,7 +41,7 @@ function fence(content: string, n: string): string {
 }
 
 async function gql(query: string, variables: Record<string, unknown>): Promise<any> {
-  const res = await fetch(`${GITHUB_API}/graphql`, {
+  const res = await fetch(githubGraphqlEndpoint(), {
     method: "POST",
     headers: { ...headers(), "Content-Type": "application/json" },
     body: JSON.stringify({ query, variables }),
@@ -45,7 +59,7 @@ export async function assemblePRContext(prNumber: number): Promise<string> {
   const parts: string[] = []
 
   // 1. PR metadata
-  const prRes = await fetch(`${GITHUB_API}/repos/${repo}/pulls/${prNumber}`, { headers: headers() })
+  const prRes = await fetch(`${githubApiBase()}/repos/${repo}/pulls/${prNumber}`, { headers: headers() })
   if (!prRes.ok) throw new Error(`pr: ${prRes.status}`)
   const pr = (await prRes.json()) as {
     title: string; body: string; base: { ref: string }; head: { ref: string; sha: string }
@@ -104,7 +118,7 @@ export async function assemblePRContext(prNumber: number): Promise<string> {
   } catch { /* non-fatal */ }
 
   // 4. Files manifest + patches
-  const filesRes = await fetch(`${GITHUB_API}/repos/${repo}/pulls/${prNumber}/files`, { headers: headers() })
+  const filesRes = await fetch(`${githubApiBase()}/repos/${repo}/pulls/${prNumber}/files`, { headers: headers() })
   if (filesRes.ok) {
     const files = (await filesRes.json()) as Array<{ filename: string; patch?: string; status: string }>
     parts.push("## Files Changed")
@@ -143,7 +157,7 @@ export async function assembleIssueContext(issueNumber: number): Promise<string>
   const n = nonce()
   const parts: string[] = []
 
-  const issueRes = await fetch(`${GITHUB_API}/repos/${repo}/issues/${issueNumber}`, { headers: headers() })
+  const issueRes = await fetch(`${githubApiBase()}/repos/${repo}/issues/${issueNumber}`, { headers: headers() })
   if (!issueRes.ok) throw new Error(`issue: ${issueRes.status}`)
   const issue = (await issueRes.json()) as {
     title: string; body: string; user: { login: string }; labels: Array<{ name: string }>; number: number
@@ -162,7 +176,7 @@ export async function assembleIssueContext(issueNumber: number): Promise<string>
   parts.push("")
 
   // Recent comments
-  const commentsRes = await fetch(`${GITHUB_API}/repos/${repo}/issues/${issueNumber}/comments`, { headers: headers() })
+  const commentsRes = await fetch(`${githubApiBase()}/repos/${repo}/issues/${issueNumber}/comments`, { headers: headers() })
   if (commentsRes.ok) {
     const comments = (await commentsRes.json()) as Array<{ user: { login: string }; body: string; created_at: string }>
     if (comments.length > 0) {

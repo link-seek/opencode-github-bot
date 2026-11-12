@@ -1,5 +1,5 @@
 import { describe, expect, test, beforeEach, afterEach } from "bun:test"
-import { assemblePRContext, assembleIssueContext } from "../scripts/context"
+import { assemblePRContext, assembleIssueContext, githubGraphqlEndpoint } from "../scripts/context"
 
 const originalFetch = globalThis.fetch
 const originalEnv = { ...process.env }
@@ -224,5 +224,16 @@ describe("assembleIssueContext", () => {
 
     const result = await assembleIssueContext(1)
     expect(result).toMatch(/===== BEGIN UNTRUSTED PR CONTENT [0-9a-f]{32} =====/)
+  })
+})
+
+describe("githubGraphqlEndpoint", () => {
+  test("github.com and GHEC use base + /graphql", () => {
+    expect(githubGraphqlEndpoint("https://api.github.com")).toBe("https://api.github.com/graphql")
+    expect(githubGraphqlEndpoint("https://api.ghe.com/")).toBe("https://api.ghe.com/graphql")
+  })
+  test("GHES REST base maps to /api/graphql", () => {
+    expect(githubGraphqlEndpoint("https://ghe.example.com/api/v3")).toBe("https://ghe.example.com/api/graphql")
+    expect(githubGraphqlEndpoint("http://ghe.example.com/api/v3/")).toBe("http://ghe.example.com/api/graphql")
   })
 })

@@ -92,10 +92,17 @@ runs:
         else
           echo "dir=$GITHUB_ACTION_PATH" >> "$GITHUB_OUTPUT"
         fi
+        # GHES/GHEC: normalize API endpoint + host once so every later step
+        # (gather/agent/scripts) inherits it via $GITHUB_ENV.
+        GH_API="${{ github.api_url }}"
+        GH_API="$(printf '%s' "$GH_API" | sed -e 's#/*$##')"
+        GH_HOST="$(printf '%s' "${{ github.server_url }}" | sed -e 's#^https\?://##' -e 's#/*$##')"
+        echo "GITHUB_API_URL=$GH_API" >> "$GITHUB_ENV"
+        echo "GH_HOST=$GH_HOST" >> "$GITHUB_ENV"
 
     - name: Install OpenCode v2
       shell: bash
-      run: curl -fsSL https://opencode.ai/v2/install | bash
+      run: curl -fsSL "${OPENCODE_INSTALL_URL:-https://opencode.ai/v2/install}" | bash
 
     - name: Add OpenCode to PATH
       shell: bash
@@ -118,6 +125,7 @@ runs:
         PR_NUMBER: ${{ inputs.pr-number }}
         REPOSITORY: ${{ github.repository }}
       run: |
+        # GH_HOST/GITHUB_API_URL come from $GITHUB_ENV (resolve step); see top.
         mkdir -p .opencode
         NONCE=$(openssl rand -hex 16)
         {
@@ -206,7 +214,7 @@ runs:
         ISSUE_NUMBER: ${{ inputs.issue-number }}
         SPLIT_ACTION: plan-pre
       run: |
-        if ! command -v bun >/dev/null 2>&1; then curl -fsSL https://bun.sh/install | bash; export PATH="$HOME/.bun/bin:$PATH"; fi
+        if ! command -v bun >/dev/null 2>&1; then curl -fsSL "${BUN_INSTALL_URL:-https://bun.sh/install}" | bash; export PATH="$HOME/.bun/bin:$PATH"; fi
         bun "${{ steps.pkgsrc.outputs.dir }}/scripts/split-run.ts"
 
     - name: Run OpenCode v2
@@ -263,7 +271,7 @@ runs:
           opencode run --agent github-bot --model "${CLI_MODEL}" "Mode: ${MODE}. Repository: ${REPOSITORY}. PR number: ${PR_NUMBER}. Issue number: ${ISSUE_NUMBER}. If mode is review, read .opencode/pr-context.md and use the pr-review skill. If mode is fix-issue, read .opencode/issue-context.md and use the issue-fix skill. If mode is split-plan, read .opencode/split-context.md and use the pm-split skill. Write pm-split-plan.json in the current directory. Do NOT comment or create issues." || TASK_EXIT=$?
         fi
         export TASK_STARTED_AT TASK_EXIT_CODE="$TASK_EXIT"
-        if ! command -v bun >/dev/null 2>&1; then curl -fsSL https://bun.sh/install | bash; export PATH="$HOME/.bun/bin:$PATH"; fi
+        if ! command -v bun >/dev/null 2>&1; then curl -fsSL "${BUN_INSTALL_URL:-https://bun.sh/install}" | bash; export PATH="$HOME/.bun/bin:$PATH"; fi
         bun "${{ steps.pkgsrc.outputs.dir }}/scripts/report-task.ts" || true
         exit "$TASK_EXIT"
     - name: Validate split plan and publish draft
@@ -275,7 +283,7 @@ runs:
         ISSUE_NUMBER: ${{ inputs.issue-number }}
         SPLIT_ACTION: plan-post
       run: |
-        if ! command -v bun >/dev/null 2>&1; then curl -fsSL https://bun.sh/install | bash; export PATH="$HOME/.bun/bin:$PATH"; fi
+        if ! command -v bun >/dev/null 2>&1; then curl -fsSL "${BUN_INSTALL_URL:-https://bun.sh/install}" | bash; export PATH="$HOME/.bun/bin:$PATH"; fi
         bun "${{ steps.pkgsrc.outputs.dir }}/scripts/split-run.ts"
         rm -f pm-split-plan.json .opencode/split-context.md
     - name: Apply approved split plan
@@ -287,7 +295,7 @@ runs:
         ISSUE_NUMBER: ${{ inputs.issue-number }}
         SPLIT_ACTION: apply
       run: |
-        if ! command -v bun >/dev/null 2>&1; then curl -fsSL https://bun.sh/install | bash; export PATH="$HOME/.bun/bin:$PATH"; fi
+        if ! command -v bun >/dev/null 2>&1; then curl -fsSL "${BUN_INSTALL_URL:-https://bun.sh/install}" | bash; export PATH="$HOME/.bun/bin:$PATH"; fi
         bun "${{ steps.pkgsrc.outputs.dir }}/scripts/split-run.ts"
     - name: Run intake triage (no-LLM except Jev)
       if: inputs.mode == 'intake'
@@ -307,7 +315,7 @@ runs:
         VECTORIZE_INDEX: ${{ env.VECTORIZE_INDEX }}
         LMNR_PROJECT_API_KEY: ${{ env.LMNR_PROJECT_API_KEY }}
       run: |
-        if ! command -v bun >/dev/null 2>&1; then curl -fsSL https://bun.sh/install | bash; export PATH="$HOME/.bun/bin:$PATH"; fi
+        if ! command -v bun >/dev/null 2>&1; then curl -fsSL "${BUN_INSTALL_URL:-https://bun.sh/install}" | bash; export PATH="$HOME/.bun/bin:$PATH"; fi
         bun "${{ steps.pkgsrc.outputs.dir }}/scripts/intake-run.ts"
     - name: Upload intake dataset row
       if: inputs.mode == 'intake'
@@ -327,7 +335,7 @@ runs:
         VERDICT_EVENT: ${{ github.event.action }}
         VERDICT_ACTOR: ${{ github.actor }}
       run: |
-        if ! command -v bun >/dev/null 2>&1; then curl -fsSL https://bun.sh/install | bash; export PATH="$HOME/.bun/bin:$PATH"; fi
+        if ! command -v bun >/dev/null 2>&1; then curl -fsSL "${BUN_INSTALL_URL:-https://bun.sh/install}" | bash; export PATH="$HOME/.bun/bin:$PATH"; fi
         bun "${{ steps.pkgsrc.outputs.dir }}/scripts/verdict.ts"
     - name: Upload verdict row
       if: inputs.mode == 'verdict'

@@ -14,7 +14,7 @@ const token = process.env.GITHUB_TOKEN ?? ""
 const repo = process.env.GITHUB_REPOSITORY ?? ""
 
 async function gh(path: string): Promise<any> {
-  const r = await fetch(`https://api.github.com${path}`, {
+  const r = await fetch(`${(process.env.GITHUB_API_URL || "https://api.github.com").replace(/\/+$/, "")}${path}`, {
     headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" },
   })
   if (!r.ok) throw new Error(`gh ${path}: ${r.status}`)

@@ -6,7 +6,9 @@
  * Read-only + artifact upload. Never comments.
  */
 
-const GH = "https://api.github.com"
+function githubApiBase(): string {
+  return (process.env.GITHUB_API_URL || "https://api.github.com").replace(/\/+$/, "")
+}
 
 function headers(token: string): Record<string, string> {
   return {
@@ -17,7 +19,7 @@ function headers(token: string): Record<string, string> {
 }
 
 async function gh(path: string, token: string): Promise<any> {
-  const res = await fetch(`${GH}${path}`, { headers: headers(token) })
+  const res = await fetch(`${githubApiBase()}${path}`, { headers: headers(token) })
   if (!res.ok) throw new Error(`gh ${path}: ${res.status}`)
   return res.json()
 }
