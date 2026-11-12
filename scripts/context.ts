@@ -6,6 +6,18 @@
 function githubApiBase(): string {
   return (process.env.GITHUB_API_URL || "https://api.github.com").replace(/\/+$/, "")
 }
+
+/**
+ * GraphQL endpoint for the configured API base.
+ * github.com/GHEC: <base>/graphql. GHES REST base is <host>/api/v3
+ * while GraphQL lives at <host>/api/graphql.
+ */
+export function githubGraphqlEndpoint(envBase?: string): string {
+  const base = (envBase ?? process.env.GITHUB_API_URL ?? "https://api.github.com").replace(/\/+$/, "")
+  const m = base.match(/^(https?:\/\/[^/]+)\/api\/v3$/)
+  if (m) return `${m[1]}/api/graphql`
+  return `${base}/graphql`
+}
 const MAX_PER_FILE = 8_000
 const MAX_TOTAL_DIFF = 100_000
 const MAX_REVIEW_CONTEXT = 30_000
@@ -29,7 +41,7 @@ function fence(content: string, n: string): string {
 }
 
 async function gql(query: string, variables: Record<string, unknown>): Promise<any> {
-  const res = await fetch(`${githubApiBase()}/graphql`, {
+  const res = await fetch(githubGraphqlEndpoint(), {
     method: "POST",
     headers: { ...headers(), "Content-Type": "application/json" },
     body: JSON.stringify({ query, variables }),

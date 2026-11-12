@@ -43,7 +43,7 @@ on:
         default: "ubuntu-latest"
         type: string
       bot-repository:
-        description: "Bot source repository providing the composite action (default link-seek/opencode-github-bot). Override for a mirror/fork on GHEC."
+        description: "Bot source repository providing the composite action (default link-seek/opencode-github-bot). Override for a mirror/fork on GHEC. Trust note: the checked-out repo is executed with your secrets — only point at repos you trust; prefer a SHA pin for mirrors."
         required: false
         default: "link-seek/opencode-github-bot"
         type: string

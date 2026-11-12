@@ -92,6 +92,13 @@ runs:
         else
           echo "dir=$GITHUB_ACTION_PATH" >> "$GITHUB_OUTPUT"
         fi
+        # GHES/GHEC: normalize API endpoint + host once so every later step
+        # (gather/agent/scripts) inherits it via $GITHUB_ENV.
+        GH_API="${{ github.api_url }}"
+        GH_API="$(printf '%s' "$GH_API" | sed -e 's#/*$##')"
+        GH_HOST="$(printf '%s' "${{ github.server_url }}" | sed -e 's#^https\?://##' -e 's#/*$##')"
+        echo "GITHUB_API_URL=$GH_API" >> "$GITHUB_ENV"
+        echo "GH_HOST=$GH_HOST" >> "$GITHUB_ENV"
 
     - name: Install OpenCode v2
       shell: bash
@@ -118,7 +125,7 @@ runs:
         PR_NUMBER: ${{ inputs.pr-number }}
         REPOSITORY: ${{ github.repository }}
       run: |
-        export GH_HOST="${GITHUB_SERVER_URL#https://}"
+        # GH_HOST/GITHUB_API_URL come from $GITHUB_ENV (resolve step); see top.
         mkdir -p .opencode
         NONCE=$(openssl rand -hex 16)
         {
@@ -167,7 +174,6 @@ runs:
         REPOSITORY: ${{ github.repository }}
       run: |
         mkdir -p .opencode
-        export GH_HOST="${GITHUB_SERVER_URL#https://}"
         NONCE=$(openssl rand -hex 16)
         {
           echo "# Issue Context"
