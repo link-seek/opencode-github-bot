@@ -44,7 +44,10 @@ export function detectRepoType(root: string = process.cwd()): RepoType {
 function hasGlobExt(root: string, exts: string[]): boolean {
   try {
     return readdirSync(root, { withFileTypes: true }).some(
-      (e) => e.isFile() && exts.some((x) => e.name.endsWith(x)),
+      (e) =>
+        e.isFile() &&
+        !/[*?[\]]/.test(e.name) &&
+        exts.some((x) => e.name.endsWith(x) && e.name.length > x.length),
     )
   } catch {
     return false
@@ -180,8 +183,12 @@ export function checkMissing(envOrConfig?: any): string[] {
 export function generateWorkflow(options: InitOptions | string | undefined = {}): string {
   const opts: InitOptions = typeof options === "string" ? { mode: options } : (options || {})
   const mode = opts.mode || "review"
+  if (!(KNOWN_MODES as readonly string[]).includes(mode)) {
+    throw new Error(`unknown mode: ${JSON.stringify(mode).slice(0, 80)}`)
+  }
   const model = opts.model || "${{ vars.OPENCODE_MODEL }}"
-  const version = opts.version || "v0.5.0"
+  if (/[\r\n]/.test(model)) throw new Error("model must be single-line")
+  const version = safeToken(opts.version || "v0.5.0", "version")
   const modelLine = `      model: ${model}`
   const versionLine = version === "v0.5.0" ? "" : `      bot-version: ${version}\n`
   return `name: opencode
@@ -231,6 +238,16 @@ export function workflowTemplate(options?: InitOptions | string): string {
   return generateWorkflow(options)
 }
 
+const KNOWN_MODES = ["review", "fix-issue", "intake", "split-plan", "split-apply"] as const
+
+/** Guard generated YAML against workflow injection: single-line safe tokens only. */
+function safeToken(v: string, field: string): string {
+  if (!/^[A-Za-z0-9._@/-]+$/.test(v)) {
+    throw new Error(`unsafe ${field}: ${JSON.stringify(v).slice(0, 80)}`)
+  }
+  return v
+}
+
 export interface InitResult {
   repoType: RepoType
   workflowPath: string
@@ -238,6 +255,7 @@ export interface InitResult {
   written: boolean
   missing: string[]
   ok: boolean
+  error?: string
 }
 
 export async function init(options: InitOptions = {}): Promise<InitResult> {
@@ -256,14 +274,18 @@ export async function runInit(options: InitOptions = {}): Promise<InitResult> {
     throw new Error(`refusing to write outside repo root: ${workflowPath}`)
   }
   let written = false
-  if (options.write) {
-    if (existsSync(full) && !options.force) {
-      // don't overwrite silently
-    } else {
-      mkdirSync(dirname(full), { recursive: true })
-      writeFileSync(full, content, "utf8")
-      written = true
+  try {
+    if (options.write) {
+      if (existsSync(full) && !options.force) {
+        // don't overwrite silently
+      } else {
+        mkdirSync(dirname(full), { recursive: true })
+        writeFileSync(full, content, "utf8")
+        written = true
+      }
     }
+  } catch (e) {
+    return { repoType, workflowPath, content, written: false, missing, ok: false, error: String((e as Error)?.message ?? e).slice(0, 200) }
   }
   return { repoType, workflowPath, content, written, missing, ok: missing.length === 0 }
 }

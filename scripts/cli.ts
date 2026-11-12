@@ -10,6 +10,11 @@ async function main() {
     const cwd = process.cwd()
     const res = await runInit({ cwd, write, force })
     process.stdout.write(res.content)
+    if (res.error) {
+      console.error(`\nWrite failed: ${res.error}`)
+      process.exitCode = 1
+      return
+    }
     if (res.missing.length > 0) {
       console.error("\nMissing required configuration:")
       for (const m of res.missing) console.error("  - " + m)
