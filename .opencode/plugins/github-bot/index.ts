@@ -178,22 +178,22 @@ export default Plugin.define({
           ...(prNumber != null ? { "pr.number": prNumber } : {}),
           ...(model ? { "model.id": model } : {}),
         })
-        const finish = () => {
-          try { endSpan(taskSpan) } catch { /* ignore */ }
-          flushLaminar().catch(() => {})
-        }
         // Flush with a timeout before exiting, otherwise in-flight traces are dropped.
-        const finishAndExit = (code: number) => {
-          let done = false
-          const bye = () => { if (!done) { done = true; process.exit(code) } }
+        const flushSoon = () => {
           try { endSpan(taskSpan) } catch { /* ignore */ }
           Promise.resolve()
             .then(() => flushLaminar())
             .catch(() => {})
-            .then(bye, bye)
+          // Ref'd: keep the loop alive up to 5s so the flush can land.
+          setTimeout(() => {}, 5000)
+        }
+        const finishAndExit = (code: number) => {
+          let done = false
+          const bye = () => { if (!done) { done = true; process.exit(code) } }
+          flushSoon()
           setTimeout(bye, 5000)
         }
-        process.on("beforeExit", finish)
+        process.on("beforeExit", flushSoon)
         process.on("SIGTERM", () => finishAndExit(0))
         process.on("SIGINT", () => finishAndExit(0))
       }

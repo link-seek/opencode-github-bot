@@ -16,7 +16,7 @@
   ],
   "dependencies": {
     "@opencode/plugin": "latest",
-    "@lmnr-ai/lmnr": "0.8.61"
+    "@lmnr-ai/lmnr": "0.8.55"
   },
   "keywords": [
     "opencode",
