@@ -1,0 +1,107 @@
+name: opencode review (reusable)
+
+# Reusable workflow for one-click PR review.
+# Consumer repos only need:
+#   jobs:
+#     review:
+#       uses: link-seek/opencode-github-bot/.github/workflows/review.yml@v0.5.0
+#       with:
+#         mode: review          # optional, defaults to review
+#         model: ${{ vars.OPENCODE_MODEL }}  # optional override
+#       secrets: inherit
+on:
+  workflow_call:
+    inputs:
+      mode:
+        description: "Bot mode (review by default)"
+        required: false
+        default: "review"
+        type: string
+      model:
+        description: "Optional model override (OPENCODE_MODEL). Falls back to vars.OPENCODE_MODEL."
+        required: false
+        type: string
+      pr-number:
+        description: "PR number (optional; auto-detected from pull_request event)"
+        required: false
+        type: string
+      package-source:
+        description: "Bot code source: repo or npm"
+        required: false
+        default: "repo"
+        type: string
+      package-version:
+        description: "npm dist-tag/version when package-source is npm"
+        required: false
+        default: "latest"
+        type: string
+    secrets:
+      AGENT_GITHUB_TOKEN:
+        description: "GitHub token with pull-requests:write (required)"
+        required: true
+      OPENCODE_API_KEY:
+        description: "OpenCode/LLM API key (required)"
+        required: true
+      OPENCODE_API_KEY_BULK:
+        description: "Optional bulk-lane key"
+        required: false
+      KEY_FAST:
+        description: "Optional fast-lane key override"
+        required: false
+      KEY_BULK:
+        description: "Optional bulk-lane key override"
+        required: false
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Verify required configuration (fail loudly, never skip)
+        shell: bash
+        env:
+          AGENT_GITHUB_TOKEN: ${{ secrets.AGENT_GITHUB_TOKEN }}
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          MODEL: ${{ inputs.model || vars.OPENCODE_MODEL }}
+        run: |
+          set -euo pipefail
+          missing=()
+          [ -z "${AGENT_GITHUB_TOKEN:-}" ] && missing+=("secret AGENT_GITHUB_TOKEN")
+          [ -z "${OPENCODE_API_KEY:-}" ] && missing+=("secret OPENCODE_API_KEY")
+          [ -z "${MODEL:-}" ] && missing+=("var OPENCODE_MODEL (or inputs.model)")
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::Missing required bot configuration: ${missing[*]}"
+            echo "Add the missing items in repo/org Settings -> Secrets and variables -> Actions, then re-run."
+            exit 1
+          fi
+          echo "Bot configuration OK (model=${MODEL})"
+
+      - name: Run OpenCode bot
+        uses: ./
+        with:
+          model: ${{ inputs.model || vars.OPENCODE_MODEL }}
+          github-token: ${{ secrets.AGENT_GITHUB_TOKEN }}
+          mode: ${{ inputs.mode }}
+          pr-number: ${{ inputs.pr-number || github.event.pull_request.number }}
+          package-source: ${{ inputs.package-source }}
+          package-version: ${{ inputs.package-version }}
+          llm-api-key: ${{ secrets.OPENCODE_API_KEY }}
+          require-evidence: "false"
+          require-pinned-actions: "false"
+          collect-feedback: "true"
+        env:
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          OPENCODE_API_KEY_BULK: ${{ secrets.OPENCODE_API_KEY_BULK }}
+          KEY_FAST: ${{ secrets.KEY_FAST }}
+          KEY_BULK: ${{ secrets.KEY_BULK }}
+          OPENCODE_MODEL: ${{ inputs.model || vars.OPENCODE_MODEL }}

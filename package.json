@@ -4,6 +4,9 @@
   "description": "OpenCode v2 GitHub bot: composite action + server plugin for PR review and issue fix",
   "type": "module",
   "main": ".opencode/plugins/github-bot/index.ts",
+  "bin": {
+    "opencode-github-bot": "scripts/cli.ts"
+  },
   "files": [
     ".opencode/",
     "scripts/",
@@ -23,17 +26,26 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/link-seek/opencode-github-bot.git"
+    "url": "git+https://github.com/link-seek/opencode-github-bot.git"
   },
   "publishConfig": {
     "access": "public"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "bun test"
+    "test": "bun test",
+    "init": "bun scripts/cli.ts init"
   },
   "devDependencies": {
     "@types/bun": "latest",
     "typescript": "^5.9.3"
-  }
+  },
+  "directories": {
+    "test": "tests"
+  },
+  "author": "",
+  "bugs": {
+    "url": "https://github.com/link-seek/opencode-github-bot/issues"
+  },
+  "homepage": "https://github.com/link-seek/opencode-github-bot#readme"
 }
