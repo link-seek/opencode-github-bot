@@ -172,11 +172,12 @@ export default Plugin.define({
     // agent process did manage to create.
     // Run-once guard: beforeExit refires whenever the loop drains; without
     // the guard the handler would reschedule itself forever and hang exit.
-    let exitFlushed = false
-    const flushOnce = async () => {
-      if (exitFlushed) return
-      exitFlushed = true
-      await flushSoon()
+    // The in-flight promise is shared so concurrent signals/beforeExit
+    // await the same flush instead of starting new ones.
+    let exitFlush: Promise<void> | null = null
+    const flushOnce = () => {
+      if (!exitFlush) exitFlush = flushSoon()
+      return exitFlush
     }
     try {
       if (laminarEnabled()) {
