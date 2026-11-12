@@ -42,6 +42,7 @@ jobs:
           OPENCODE_API_KEY_BULK: ${{ secrets.OPENCODE_API_KEY_BULK }}
           KEY_FAST: ${{ secrets.KEY_FAST }}
           KEY_BULK: ${{ secrets.KEY_BULK }}
+          LMNR_PROJECT_API_KEY: ${{ secrets.LMNR_PROJECT_API_KEY }}
           JEV_MODEL: ${{ vars.JEV_MODEL }}
         with:
           model: ${{ vars.OPENCODE_MODEL }}
@@ -83,6 +84,7 @@ jobs:
           OPENCODE_API_KEY_BULK: ${{ secrets.OPENCODE_API_KEY_BULK }}
           KEY_FAST: ${{ secrets.KEY_FAST }}
           KEY_BULK: ${{ secrets.KEY_BULK }}
+          LMNR_PROJECT_API_KEY: ${{ secrets.LMNR_PROJECT_API_KEY }}
         with:
           model: ${{ vars.OPENCODE_MODEL }}
           package-source: ${{ github.ref == 'refs/heads/main' && 'npm' || 'repo' }}
@@ -103,6 +105,7 @@ jobs:
           OPENCODE_API_KEY_BULK: ${{ secrets.OPENCODE_API_KEY_BULK }}
           KEY_FAST: ${{ secrets.KEY_FAST }}
           KEY_BULK: ${{ secrets.KEY_BULK }}
+          LMNR_PROJECT_API_KEY: ${{ secrets.LMNR_PROJECT_API_KEY }}
         with:
           model: ${{ vars.OPENCODE_MODEL }}
           package-source: ${{ github.ref == 'refs/heads/main' && 'npm' || 'repo' }}
@@ -120,6 +123,7 @@ jobs:
           OPENCODE_API_KEY_BULK: ${{ secrets.OPENCODE_API_KEY_BULK }}
           KEY_FAST: ${{ secrets.KEY_FAST }}
           KEY_BULK: ${{ secrets.KEY_BULK }}
+          LMNR_PROJECT_API_KEY: ${{ secrets.LMNR_PROJECT_API_KEY }}
         with:
           model: ${{ vars.OPENCODE_MODEL }}
           llm-api-key: ${{ secrets.OPENCODE_API_KEY }}
@@ -137,6 +141,7 @@ jobs:
           OPENCODE_API_KEY_BULK: ${{ secrets.OPENCODE_API_KEY_BULK }}
           KEY_FAST: ${{ secrets.KEY_FAST }}
           KEY_BULK: ${{ secrets.KEY_BULK }}
+          LMNR_PROJECT_API_KEY: ${{ secrets.LMNR_PROJECT_API_KEY }}
         with:
           model: ${{ vars.OPENCODE_MODEL }}
           llm-api-key: ${{ secrets.OPENCODE_API_KEY }}
