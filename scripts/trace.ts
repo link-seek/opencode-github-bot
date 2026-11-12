@@ -36,7 +36,7 @@ export async function initLaminar(env: NodeJS.ProcessEnv = process.env): Promise
       initFailed = true
       return false
     }
-    Laminar.initialize({ projectApiKey: key, logLevel: "error" })
+    Laminar.initialize({ projectApiKey: key, logLevel: "error", disableBatch: true })
     initialized = true
     return true
   } catch {

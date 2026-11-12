@@ -304,5 +304,12 @@ async function postComment(repo: string, n: number, token: string, body: string)
 
 if (import.meta.main) {
   const res = await runIntake()
+  // Flush traces before exit: short-lived process, nothing else will.
+  try {
+    const { flushLaminar } = await import("./trace")
+    await flushLaminar()
+  } catch {
+    /* tracing must never break the run */
+  }
   console.log(JSON.stringify({ decision: res.decision, labels: res.labels }))
 }
