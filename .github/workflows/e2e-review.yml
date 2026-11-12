@@ -51,9 +51,9 @@ jobs:
       - name: Verify review posted
         run: |
           sleep 5
-          COMMENTS=$(gh pr view ${{ steps.pr.outputs.pr_number }} --json comments --jq '.comments | length')
-          echo "Review comments: $COMMENTS"
-          [ "$COMMENTS" -gt 0 ] || { echo "FAIL: no review comment posted"; exit 1; }
+          COUNT=$(gh pr view ${{ steps.pr.outputs.pr_number }} --json comments,reviews --jq '(.comments | length) + (.reviews | length)')
+          echo "Review activity (comments+reviews): $COUNT"
+          [ "$COUNT" -gt 0 ] || { echo "FAIL: no review activity posted"; exit 1; }
           echo "PASS: review posted"
 
       - name: Cleanup
