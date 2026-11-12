@@ -267,12 +267,16 @@ export async function init(options: InitOptions = {}): Promise<InitResult> {
 export async function runInit(options: InitOptions = {}): Promise<InitResult> {
   const cwd = options.cwd || process.cwd()
   const repoType = options.repoType || detectRepoType(cwd)
-  const workflowPath = options.workflowPath || ".github/workflows/opencode.yml"
+  const rawPath = options.workflowPath
+  if (rawPath !== undefined && rawPath.trim() === "") {
+    throw new Error("refusing empty workflowPath (would silently fall back to default)")
+  }
+  const workflowPath = rawPath || ".github/workflows/opencode.yml"
   const content = generateWorkflow({ ...options, repoType })
   const missing = listMissing(options.env)
   const full = resolve(cwd, workflowPath)
   const rel = relative(cwd, full)
-  if (workflowPath.trim() === "" || rel === "" || rel === ".." || rel.startsWith(`..${sep}`)) {
+  if (rel === "" || rel === ".." || rel.startsWith(`..${sep}`)) {
     throw new Error(`refusing to write outside repo root: ${workflowPath}`)
   }
   let written = false
