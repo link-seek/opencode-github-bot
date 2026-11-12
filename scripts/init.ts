@@ -187,7 +187,9 @@ export function generateWorkflow(options: InitOptions | string | undefined = {})
     throw new Error(`unknown mode: ${JSON.stringify(mode).slice(0, 80)}`)
   }
   const model = opts.model || "${{ vars.OPENCODE_MODEL }}"
-  if (/[\r\n]/.test(model)) throw new Error("model must be single-line")
+  if (!/^(\$\{\{\s*vars\.[A-Za-z0-9_]+\s*\}\}|[A-Za-z0-9._@/-]+)$/.test(model)) {
+    throw new Error(`unsafe model: ${JSON.stringify(model).slice(0, 80)}`)
+  }
   const version = safeToken(opts.version || "v0.5.0", "version")
   const modelLine = `      model: ${model}`
   const versionLine = version === "v0.5.0" ? "" : `      bot-version: ${version}\n`
