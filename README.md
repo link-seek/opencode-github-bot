@@ -136,6 +136,14 @@ apply is idempotent (same-title open children are reused). See [#10](https://git
 
 lane 到 key 的映射放 env（`OPENCODE_API_KEY` = fast，`OPENCODE_API_KEY_BULK` = bulk，`KEY_FAST` / `KEY_BULK` 可选覆盖），路由策略放代码（`scripts/keys.ts` 的 `keysFor(env, "short"|"long")`）。加订阅、轮换 key、以后按模型/按 endpoint 分，都只改 env 不改代码。
 
+## Tracing (Laminar)
+
+Optional: bot runs can push traces to [Laminar](https://laminar.sh) for visibility into multi-step agent runs.
+
+- Secret: `LMNR_PROJECT_API_KEY` (org-level). Set it in repo/org secrets; missing key => tracing is silently skipped (zero behavior change).
+- Where to view: Laminar project dashboard (traces for intake Jev calls, llm-judge calls, and agent long tasks, carrying issue/PR number, mode, and model id).
+- No timed export to OBS and no eval scoring in this version.
+
 ## Status
 
 v0.3.0: + pm-intake (Jev 6-question triage, docs-aligned, strict CF child tokens). Trusted Publishing (OIDC) enabled.

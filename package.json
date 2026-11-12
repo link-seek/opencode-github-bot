@@ -15,7 +15,8 @@
     "README.md"
   ],
   "dependencies": {
-    "@opencode/plugin": "latest"
+    "@opencode/plugin": "latest",
+    "@lmnr-ai/lmnr": "0.8.55"
   },
   "keywords": [
     "opencode",
@@ -27,7 +28,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/link-seek/opencode-github-bot.git"
+    "url": "git+https://github.com/link-seek/opencode-github-bot.git"
   },
   "publishConfig": {
     "access": "public"
@@ -42,5 +43,13 @@
   "devDependencies": {
     "@types/bun": "latest",
     "typescript": "^5.9.3"
-  }
+  },
+  "directories": {
+    "test": "tests"
+  },
+  "author": "",
+  "bugs": {
+    "url": "https://github.com/link-seek/opencode-github-bot/issues"
+  },
+  "homepage": "https://github.com/link-seek/opencode-github-bot#readme"
 }

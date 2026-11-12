@@ -235,6 +235,7 @@ runs:
         KEY_FAST: ${{ env.KEY_FAST }}
         KEY_BULK: ${{ env.KEY_BULK }}
         LLM_BASE_URL: ${{ inputs.llm-base-url }}
+        LMNR_PROJECT_API_KEY: ${{ env.LMNR_PROJECT_API_KEY }}
         TIMEOUT_MINUTES: ${{ inputs.timeout-minutes }}
         OPENCODE_CONFIG_CONTENT: '{"permission":"allow"}'
       run: |
@@ -295,6 +296,7 @@ runs:
         KEY_BULK: ${{ env.KEY_BULK }}
         CF_PARENT_TOKEN: ${{ env.CF_PARENT_TOKEN }}
         VECTORIZE_INDEX: ${{ env.VECTORIZE_INDEX }}
+        LMNR_PROJECT_API_KEY: ${{ env.LMNR_PROJECT_API_KEY }}
       run: |
         if ! command -v bun >/dev/null 2>&1; then curl -fsSL https://bun.sh/install | bash; export PATH="$HOME/.bun/bin:$PATH"; fi
         bun "${{ steps.pkgsrc.outputs.dir }}/scripts/intake-run.ts"

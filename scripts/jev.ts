@@ -11,6 +11,7 @@
  */
 import { parseModelVar } from "./model-target"
 import { isRateLimited, keysFor } from "./keys"
+import { withSpan } from "./trace"
 export const DEFAULT_JEV_MODEL = "jev-1.13-free"
 export const DEFAULT_JEV_URL = "https://opencode.ai/inference/systemone/v1/systemone"
 
@@ -144,11 +145,19 @@ export async function jevIntake(
   candidates: CandidateDoc[],
   ep?: JevEndpoint | null,
   fetchFn: typeof fetch = fetch,
+  traceCtx?: { issueNumber?: number; prNumber?: number; mode?: string },
 ): Promise<JevScores | null> {
   const endpoint = ep === undefined ? jevEndpointFromEnv() : ep
   if (!endpoint) return null
   // Model default matches the resolved (opencode-family) endpoint.
   const model = endpoint.model || DEFAULT_JEV_MODEL
+  const attrs: Record<string, unknown> = {
+    "mode": traceCtx?.mode ?? "intake",
+    "model.id": model,
+  }
+  if (traceCtx?.issueNumber != null) attrs["issue.number"] = traceCtx.issueNumber
+  if (traceCtx?.prNumber != null) attrs["pr.number"] = traceCtx.prNumber
+  return await withSpan("jev.intake", attrs, async () => {
   // opencode.ai sits behind Cloudflare, which bans default script UAs (403/1010).
   // Send a browser-grade UA like the verified probe does.
   const callJev = (key: string) =>
@@ -213,4 +222,5 @@ export async function jevIntake(
     },
     model: data?.model || model,
   }
+  })
 }

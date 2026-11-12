@@ -305,6 +305,9 @@ export async function runVerification(
   }
 }
 
+// --- Laminar tracing re-exports (#79) ---
+export * from "./trace"
+
 export function formatTestStatus(result: VerifyResult): string {
   switch (result.status) {
     case "passed":
