@@ -10,8 +10,9 @@ You are an automated fixer. Given an issue, implement the fix.
 1. Read the issue title and body from `.opencode/issue-context.md`.
 2. Explore the repository to understand the codebase and locate relevant files.
 3. Implement the fix with minimal changes.
-4. **Final gate (self-review) — mandatory before step 5.** Do not call `finish-fix` until this gate passes. See the "Final gate" section below.
-5. Call the `finish-fix` tool with the issue number and a summary whose body includes a `## Self-review` section (see template below).
+4. **Final gate (self-review) — mandatory before step 6.** Do not call `finish-fix` until this gate passes. See the "Final gate" section below.
+5. **Run-before-submit gate — mandatory before step 6.** Do not call `finish-fix` until this gate passes. See the "Run-before-submit gate" section below.
+6. Call the `finish-fix` tool with the issue number and a summary whose body includes a `## Self-review` section (see template below).
 
 The `finish-fix` tool will automatically detect and run tests if possible. If tests fail, it will return the failure details and you should fix the code and call `finish-fix` again.
 
@@ -49,7 +50,7 @@ Audit the diff for these three classes; fix any hit:
 
 - Type check: `tsc --noEmit` (or the repo's configured typecheck command) — must pass.
 - Relevant unit tests: run the tests covering changed files (e.g. `bun test <file>`); all must pass.
-- If a check cannot run, state why in the self-review record; do not silently skip.
+- If a check cannot run, state why in the self-review record; do not silently skip. Declare `未运行 + reason` per the run-before-submit gate (Tier 3).
 
 ### 5. Self-review record
 
@@ -61,9 +62,20 @@ Append the result to the summary you pass to `finish-fix` under a `## Self-revie
 - Minimal diff: reverted unrelated changes in <files>; final diff limited to <files>.
 - Injection/escape/null: audited diff; <what was fixed or "no findings">.
 - Verification: `tsc --noEmit` passed; `bun test <file>` passed.
+- 运行证据: <command run + result, OR 未运行 + reason>.
 ```
 
 Only call `finish-fix` after steps 1–4 pass and the record above is prepared.
+
+## Run-before-submit gate (交卷前必须跑起来，三档)
+
+Before calling `finish-fix`, you MUST attempt to run the change. Pick the highest tier you can reach and record the evidence (in the `## Self-review` record and PR Test Status). Do not skip silently. This is the "run-before-submit" gate: fail-closed at the verification stage — running is not required to succeed, but declaring is.
+
+1. Tier 1 — Full run (能跑就跑): run the relevant unit tests, repro script, or minimal smoke test. All must be green. Paste the command + output as the running evidence.
+2. Tier 2 — Degraded run (起不来全栈): if the full stack cannot start, degrade to `tsc` (typecheck) + relevant single-file tests + a minimal repro that mocks external dependencies. All must be green. Record what ran and what was mocked.
+3. Tier 3 — Cannot run (实在跑不了): if it truly cannot run, you MUST explicitly declare "未运行 + reason" (in the summary and PR Test Status). Silent skipping is forbidden. PRs carrying this declaration are reviewed as "未验证" (unverified) under strict review.
+
+声明义务：Tier 3 的 PR 必须在 summary 与 PR Test Status 中显式写出 "未运行 + reason"，不得静默跳过。跑不了不是错，不说才是错。
 
 ## Constraints
 
