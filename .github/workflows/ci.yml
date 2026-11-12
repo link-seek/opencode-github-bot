@@ -28,6 +28,7 @@ jobs:
           OPENCODE_API_KEY_BULK: ${{ secrets.OPENCODE_API_KEY_BULK }}
           KEY_FAST: ${{ secrets.KEY_FAST }}
           KEY_BULK: ${{ secrets.KEY_BULK }}
+          LMNR_PROJECT_API_KEY: ${{ secrets.LMNR_PROJECT_API_KEY }}
           OPENCODE_MODEL: ${{ vars.OPENCODE_MODEL }}
         run: |
           export PATH="$HOME/.opencode/bin:$PATH"
