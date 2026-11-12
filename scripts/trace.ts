@@ -73,45 +73,46 @@ export async function withSpan<T>(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<T> {
   if (!laminarEnabled(env)) return await fn()
-  const ok = await initLaminar(env)
-  if (!ok) return await fn()
+  if (!(await initLaminar(env))) return await fn()
+  // Setup only: any failure here happens BEFORE fn runs, so a naked
+  // fallback is safe and runs fn exactly once.
+  let Laminar: any = null
+  let span: any = null
   try {
     const mod: any = await import("@lmnr-ai/lmnr")
-    const Laminar = mod?.Laminar ?? mod?.default?.Laminar
-    if (!Laminar) return await fn()
-    const span = typeof Laminar.startSpan === "function"
-      ? Laminar.startSpan({ name, metadata: attrs, spanType: "DEFAULT" })
-      : null
-    if (!span) return await fn()
-    try {
-      if (typeof Laminar.setSpanAttributes === "function") Laminar.setSpanAttributes(attrs as any)
-    } catch {
-      /* ignore attribute errors */
+    Laminar = mod?.Laminar ?? mod?.default?.Laminar
+    if (Laminar && typeof Laminar.startSpan === "function") {
+      span = Laminar.startSpan({ name, metadata: attrs, spanType: "DEFAULT" })
     }
-    // fn runs EXACTLY once below: its errors propagate (never re-run);
-    // post-fn tracing errors are swallowed (fn already succeeded).
-    let result: T
-    try {
-      result = await Laminar.withSpan(span, async () => await fn(), true)
-    } catch (e) {
-      try {
-        if (typeof span.recordException === "function") span.recordException(e as any)
-      } catch {
-        /* ignore */
-      }
-      throw e
-    }
-    try {
-      if (typeof Laminar.setSpanOutput === "function") Laminar.setSpanOutput(result)
-    } catch {
-      /* output-recording failed after fn succeeded: keep result */
-    }
-    return result
   } catch {
-    // Tracing infra failed before fn ran: naked run, exactly once.
-    // (fn errors never reach here — they propagate from the inner try.)
-    return await fn()
+    Laminar = null
+    span = null
   }
+  if (!Laminar || !span) return await fn()
+  try {
+    if (typeof Laminar.setSpanAttributes === "function") Laminar.setSpanAttributes(attrs as any)
+  } catch {
+    /* ignore attribute errors */
+  }
+  // No try/catch around the span body on purpose: fn errors must reach
+  // the CALLER (never the fallback below, which would re-run fn).
+  let result: T
+  try {
+    result = await Laminar.withSpan(span, async () => await fn(), true)
+  } catch (e) {
+    try {
+      if (typeof span.recordException === "function") span.recordException(e as any)
+    } catch {
+      /* ignore */
+    }
+    throw e
+  }
+  try {
+    if (typeof Laminar.setSpanOutput === "function") Laminar.setSpanOutput(result)
+  } catch {
+    /* output-recording failed after fn succeeded: keep result */
+  }
+  return result
 }
 
 // aliases
