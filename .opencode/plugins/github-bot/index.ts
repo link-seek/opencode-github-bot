@@ -191,7 +191,7 @@ export default Plugin.define({
             .then(() => flushLaminar())
             .catch(() => {})
             .then(bye, bye)
-          setTimeout(bye, 5000).unref?.()
+          setTimeout(bye, 5000)
         }
         process.on("beforeExit", finish)
         process.on("SIGTERM", () => finishAndExit(0))
