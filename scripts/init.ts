@@ -6,14 +6,15 @@
  * silently skipping them.
  */
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs"
-import { join } from "node:path"
+import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync } from "node:fs"
+import { join, dirname } from "node:path"
 
 export type RepoType = "node" | "python" | "go" | "rust" | "java" | "dotnet" | "generic"
 
 export const REQUIRED_SECRETS = ["AGENT_GITHUB_TOKEN", "OPENCODE_API_KEY"] as const
 export const REQUIRED_VARS = ["OPENCODE_MODEL"] as const
-export const OPTIONAL_VARS = ["JEV_MODEL", "OPENCODE_API_KEY_BULK"] as const
+export const OPTIONAL_SECRETS = ["OPENCODE_API_KEY_BULK"] as const
+export const OPTIONAL_VARS = ["JEV_MODEL"] as const
 export const REUSABLE_WORKFLOW = "link-seek/opencode-github-bot/.github/workflows/review.yml"
 
 export interface InitOptions {
@@ -35,8 +36,19 @@ export function detectRepoType(root: string = process.cwd()): RepoType {
   if (has("go.mod")) return "go"
   if (has("Cargo.toml")) return "rust"
   if (has("pom.xml") || has("build.gradle") || has("build.gradle.kts")) return "java"
-  if (has("*.csproj") || has("global.json")) return "dotnet"
+  if (has("global.json") || hasGlobExt(root, [".csproj", ".sln", ".fsproj"])) return "dotnet"
   return "generic"
+}
+
+/** True when the directory contains a file with one of the given extensions. */
+function hasGlobExt(root: string, exts: string[]): boolean {
+  try {
+    return readdirSync(root, { withFileTypes: true }).some(
+      (e) => e.isFile() && exts.some((x) => e.name.endsWith(x)),
+    )
+  } catch {
+    return false
+  }
 }
 
 export function detectProjectType(root?: string): RepoType {
@@ -69,18 +81,24 @@ function normalizeEnv(env?: Record<string, string | undefined>): Record<string, 
 }
 
 export function checkSecrets(envOrConfig?: any): string[] {
-  // Accept either an env record or { secrets: [...] } describing present secrets.
+  // Accept an env record, { env } wrapper, or { secrets:[...], vars:[...], env } presence description.
+  // No argument (or {}) means ambient process.env.
   let present: string[] = []
   let env: Record<string, string | undefined> = {}
-  if (Array.isArray(envOrConfig)) {
+  if (envOrConfig == null) {
+    env = normalizeEnv(undefined)
+  } else if (Array.isArray(envOrConfig)) {
     present = envOrConfig
     env = {}
-  } else if (envOrConfig && Array.isArray(envOrConfig.secrets)) {
-    present = envOrConfig.secrets
-    env = envOrConfig.env ?? {}
-    if (Array.isArray(envOrConfig.vars)) present = present.concat(envOrConfig.vars)
-  } else if (envOrConfig && typeof envOrConfig === "object") {
-    env = envOrConfig
+  } else if (typeof envOrConfig === "object") {
+    const inner = (envOrConfig.env && typeof envOrConfig.env === "object" ? envOrConfig.env : envOrConfig) as Record<string, string | undefined>
+    if (Array.isArray(envOrConfig.secrets)) {
+      present = envOrConfig.secrets
+      if (Array.isArray(envOrConfig.vars)) present = present.concat(envOrConfig.vars)
+      env = { ...normalizeEnv(undefined), ...inner }
+    } else {
+      env = inner
+    }
   }
   const missing: string[] = []
   for (const s of REQUIRED_SECRETS) {
@@ -96,17 +114,22 @@ export function checkSecrets(envOrConfig?: any): string[] {
 export function checkVars(envOrConfig?: any): string[] {
   let present: string[] = []
   let env: Record<string, string | undefined> = {}
-  if (Array.isArray(envOrConfig)) {
+  if (envOrConfig == null) {
+    env = normalizeEnv(undefined)
+  } else if (Array.isArray(envOrConfig)) {
     present = envOrConfig
     env = {}
-  } else if (envOrConfig && Array.isArray(envOrConfig.vars)) {
-    present = envOrConfig.vars
-    env = envOrConfig.env ?? {}
-  } else if (envOrConfig && Array.isArray(envOrConfig.secrets)) {
-    present = envOrConfig.secrets
-    env = envOrConfig.env ?? {}
-  } else if (envOrConfig && typeof envOrConfig === "object") {
-    env = envOrConfig
+  } else if (typeof envOrConfig === "object") {
+    const inner = (envOrConfig.env && typeof envOrConfig.env === "object" ? envOrConfig.env : envOrConfig) as Record<string, string | undefined>
+    if (Array.isArray(envOrConfig.vars)) {
+      present = envOrConfig.vars
+      env = { ...normalizeEnv(undefined), ...inner }
+    } else if (Array.isArray(envOrConfig.secrets)) {
+      present = envOrConfig.secrets
+      env = { ...normalizeEnv(undefined), ...inner }
+    } else {
+      env = inner
+    }
   }
   const missing: string[] = []
   for (const v of REQUIRED_VARS) {
@@ -160,6 +183,7 @@ export function generateWorkflow(options: InitOptions | string | undefined = {})
   const model = opts.model || "${{ vars.OPENCODE_MODEL }}"
   const version = opts.version || "v0.5.0"
   const modelLine = `      model: ${model}`
+  const versionLine = version === "v0.5.0" ? "" : `      bot-version: ${version}\n`
   return `name: opencode
 
 on:
@@ -179,7 +203,7 @@ jobs:
     with:
       mode: ${mode}
 ${modelLine}
-    secrets: inherit
+${versionLine}    secrets: inherit
 `
 }
 
@@ -232,7 +256,7 @@ export async function runInit(options: InitOptions = {}): Promise<InitResult> {
     if (existsSync(full) && !options.force) {
       // don't overwrite silently
     } else {
-      mkdirSync(join(cwd, ".github", "workflows"), { recursive: true })
+      mkdirSync(dirname(full), { recursive: true })
       writeFileSync(full, content, "utf8")
       written = true
     }

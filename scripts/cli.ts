@@ -1,5 +1,6 @@
-#!/usr/bin/env bun
-import { runInit, listMissing } from "./init"
+#!/usr/bin/env node
+// Runs under bun or plain Node (>=22.18 type-stripping, TS syntax below is erasable).
+import { runInit, listMissing } from "./init.ts"
 
 async function main() {
   const args = process.argv.slice(2)

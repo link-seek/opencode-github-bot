@@ -35,6 +35,11 @@ on:
         required: false
         default: "latest"
         type: string
+      bot-version:
+        description: "Bot repo ref (tag/SHA) providing the composite action"
+        required: false
+        default: "v0.5.0"
+        type: string
     secrets:
       AGENT_GITHUB_TOKEN:
         description: "GitHub token with pull-requests:write (required)"
@@ -86,8 +91,15 @@ jobs:
           fi
           echo "Bot configuration OK (model=${MODEL})"
 
+      - name: Checkout bot action (versioned, central upgrade point)
+        uses: actions/checkout@v4
+        with:
+          repository: link-seek/opencode-github-bot
+          ref: ${{ inputs.bot-version }}
+          path: .bot-action
+
       - name: Run OpenCode bot
-        uses: ./
+        uses: ./.bot-action
         with:
           model: ${{ inputs.model || vars.OPENCODE_MODEL }}
           github-token: ${{ secrets.AGENT_GITHUB_TOKEN }}
