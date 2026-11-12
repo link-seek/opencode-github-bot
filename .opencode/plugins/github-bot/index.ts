@@ -1,6 +1,6 @@
 import { Plugin } from "@opencode/plugin"
 import { validateIssueNumber, validateBranchName, runShell, ghApi, finishFixCore } from "./lib"
-import { laminarEnabled, initLaminar, flushLaminar } from "./trace"
+import { laminarEnabled, initLaminar, flushSoon, withTimeout } from "./trace"
 
 /**
  * OpenCode v2 GitHub Bot — self-contained server plugin.
@@ -170,18 +170,13 @@ export default Plugin.define({
     // flush: it may process.exit(), skipping beforeExit handlers).
     // Here we only keep a best-effort flush backstop for any spans the
     // agent process did manage to create.
-    const flushSoon = async () => {
-      try { await flushLaminar() } catch { /* ignore */ }
-    }
-    const withTimeout = (p: Promise<unknown>, ms: number) =>
-      Promise.race([p, new Promise((resolve) => setTimeout(resolve, ms))])
     // Run-once guard: beforeExit refires whenever the loop drains; without
     // the guard the handler would reschedule itself forever and hang exit.
     let exitFlushed = false
     const flushOnce = async () => {
       if (exitFlushed) return
       exitFlushed = true
-      await withTimeout(flushSoon(), 5000)
+      await flushSoon()
     }
     try {
       if (laminarEnabled()) {

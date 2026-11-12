@@ -66,13 +66,22 @@ export async function flushLaminar(): Promise<void> {
 /** Flush with a hard cap so tracing can never block process exit. */
 export async function flushSoon(ms = 5000): Promise<void> {
   try {
-    await Promise.race([
-      flushLaminar(),
-      new Promise((resolve) => setTimeout(resolve, ms)),
-    ])
+    await withTimeout(flushLaminar(), ms)
   } catch {
     /* ignore */
   }
+}
+
+/** Race a promise against a timer; clears the timer on settle so a fast
+ * path never holds the event loop for the full timeout. */
+export function withTimeout<T>(p: Promise<T>, ms: number): Promise<T | undefined> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const gate = new Promise<T | undefined>((resolve) => {
+    timer = setTimeout(() => resolve(undefined), ms)
+  })
+  return Promise.race([p, gate]).finally(() => {
+    if (timer !== undefined) clearTimeout(timer)
+  })
 }
 export const flushTrace = flushLaminar
 export const flushTraces = flushLaminar

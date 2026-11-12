@@ -8,7 +8,7 @@
  * Env: MODE, REPOSITORY, PR_NUMBER, ISSUE_NUMBER, MODEL/OPENCODE_MODEL/CLI_MODEL,
  *   TASK_STARTED_AT (epoch seconds), TASK_EXIT_CODE.
  */
-import { flushLaminar, withSpan } from "./trace"
+import { flushSoon, withSpan } from "./trace"
 
 function num(v: string | undefined): number | undefined {
   const n = Number(v ?? 0)
@@ -38,11 +38,7 @@ export async function reportTask(env: NodeJS.ProcessEnv = process.env): Promise<
     async () => {},
     env as NodeJS.ProcessEnv,
   ).catch(() => {})
-  try {
-    await flushLaminar()
-  } catch {
-    /* never fail the step because of tracing */
-  }
+  await flushSoon()
 }
 
 if (import.meta.main) {
