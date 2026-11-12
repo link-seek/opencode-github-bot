@@ -111,3 +111,11 @@ for (const n of nums) {
 console.log(`\n scoring: normalized 0-1 (jev raw/top-level; llm native 0-1). thresholds: repo<0.5 reject, dup 0.9/0.7, clear<0.5 info, size>=0.5 split.`)
 void normalizeScore
 void SCORE_LEVELS
+
+// Flush traces before exit: short-lived process, nothing else will.
+try {
+  const { flushSoon } = await import("./trace")
+  await flushSoon()
+} catch {
+  /* tracing must never break eval */
+}

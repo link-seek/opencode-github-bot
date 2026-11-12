@@ -252,11 +252,20 @@ runs:
         FAST="${KEY_FAST:-${OPENCODE_API_KEY:-$LLM_API_KEY}}"
         if [ -n "$BULK" ]; then AGENT_KEY="$BULK"; else AGENT_KEY="$FAST"; fi
         export OPENCODE_API_KEY="$AGENT_KEY" LLM_API_KEY="$AGENT_KEY"
+        # Task span is reported by a wrapper script AFTER the agent exits:
+        # the agent process itself cannot be relied on to flush (it may
+        # process.exit(), skipping beforeExit handlers).
+        TASK_STARTED_AT="$(date +%s)"
+        TASK_EXIT=0
         if [ -n "${REVIEW_PROMPT}" ]; then
-          opencode run --agent github-bot --model "${CLI_MODEL}" "Mode: ${MODE}. Repository: ${REPOSITORY}. PR number: ${PR_NUMBER}. Issue number: ${ISSUE_NUMBER}. Read .opencode/pr-context.md for full context. Review prompt: ${REVIEW_PROMPT}"
+          opencode run --agent github-bot --model "${CLI_MODEL}" "Mode: ${MODE}. Repository: ${REPOSITORY}. PR number: ${PR_NUMBER}. Issue number: ${ISSUE_NUMBER}. Read .opencode/pr-context.md for full context. Review prompt: ${REVIEW_PROMPT}" || TASK_EXIT=$?
         else
-          opencode run --agent github-bot --model "${CLI_MODEL}" "Mode: ${MODE}. Repository: ${REPOSITORY}. PR number: ${PR_NUMBER}. Issue number: ${ISSUE_NUMBER}. If mode is review, read .opencode/pr-context.md and use the pr-review skill. If mode is fix-issue, read .opencode/issue-context.md and use the issue-fix skill. If mode is split-plan, read .opencode/split-context.md and use the pm-split skill. Write pm-split-plan.json in the current directory. Do NOT comment or create issues."
+          opencode run --agent github-bot --model "${CLI_MODEL}" "Mode: ${MODE}. Repository: ${REPOSITORY}. PR number: ${PR_NUMBER}. Issue number: ${ISSUE_NUMBER}. If mode is review, read .opencode/pr-context.md and use the pr-review skill. If mode is fix-issue, read .opencode/issue-context.md and use the issue-fix skill. If mode is split-plan, read .opencode/split-context.md and use the pm-split skill. Write pm-split-plan.json in the current directory. Do NOT comment or create issues." || TASK_EXIT=$?
         fi
+        export TASK_STARTED_AT TASK_EXIT_CODE="$TASK_EXIT"
+        if ! command -v bun >/dev/null 2>&1; then curl -fsSL https://bun.sh/install | bash; export PATH="$HOME/.bun/bin:$PATH"; fi
+        bun "${{ steps.pkgsrc.outputs.dir }}/scripts/report-task.ts" || true
+        exit "$TASK_EXIT"
     - name: Validate split plan and publish draft
       if: inputs.mode == 'split-plan'
       shell: bash

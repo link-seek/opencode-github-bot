@@ -303,6 +303,17 @@ async function postComment(repo: string, n: number, token: string, body: string)
 }
 
 if (import.meta.main) {
-  const res = await runIntake()
-  console.log(JSON.stringify({ decision: res.decision, labels: res.labels }))
+  let res: Awaited<ReturnType<typeof runIntake>> | undefined
+  try {
+    res = await runIntake()
+  } finally {
+    // Flush even on failure (partial-run spans), bounded so exit is never stuck.
+    try {
+      const { flushSoon } = await import("./trace")
+      await flushSoon()
+    } catch {
+      /* tracing must never break the run */
+    }
+  }
+  console.log(JSON.stringify({ decision: res?.decision, labels: res?.labels }))
 }

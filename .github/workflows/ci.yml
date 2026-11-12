@@ -44,5 +44,10 @@ jobs:
           FAST="${KEY_FAST:-$OPENCODE_API_KEY}"
           if [ -n "$BULK" ]; then AGENT_KEY="$BULK"; else AGENT_KEY="$FAST"; fi
           export OPENCODE_API_KEY="$AGENT_KEY"
-          opencode run --agent github-bot --model "$CLI_MODEL" "What is 2+2? Reply with just the number." | tee /tmp/smoke.log
-          grep -q "4" /tmp/smoke.log || { echo "Smoke test failed"; cat /tmp/smoke.log; exit 1; }
+          TASK_STARTED_AT="$(date +%s)"
+          TASK_EXIT=0
+          opencode run --agent github-bot --model "$CLI_MODEL" "What is 2+2? Reply with just the number." | tee /tmp/smoke.log || TASK_EXIT=$?
+          grep -q "4" /tmp/smoke.log || { echo "Smoke test failed"; cat /tmp/smoke.log; TASK_EXIT=1; }
+          export TASK_STARTED_AT TASK_EXIT_CODE="$TASK_EXIT" MODE="smoke" REPOSITORY="${{ github.repository }}"
+          if command -v bun >/dev/null 2>&1; then bun scripts/report-task.ts || true; fi
+          exit "$TASK_EXIT"

@@ -1,6 +1,6 @@
 import { Plugin } from "@opencode/plugin"
 import { validateIssueNumber, validateBranchName, runShell, ghApi, finishFixCore } from "./lib"
-import { laminarEnabled, initLaminar, startSpan, endSpan, flushLaminar } from "./trace"
+import { laminarEnabled, initLaminar, flushSoon, withTimeout } from "./trace"
 
 /**
  * OpenCode v2 GitHub Bot — self-contained server plugin.
@@ -164,35 +164,29 @@ export default Plugin.define({
     // Untrusted PR/issue content is fenced in the context file (pr-context.md / issue-context.md).
     // Do NOT fence the prompt here — it would make the model refuse to follow instructions.
 
-    // --- Laminar tracing (#79): agent long task span start -----------------
+    // --- Laminar tracing (#79) -------------------------------------------------
+    // NOTE: the agent.task span itself is emitted by scripts/report-task.ts
+    // AFTER `opencode run` exits (the agent process cannot be relied on to
+    // flush: it may process.exit(), skipping beforeExit handlers).
+    // Here we only keep a best-effort flush backstop for any spans the
+    // agent process did manage to create.
+    // Run-once guard: beforeExit refires whenever the loop drains; without
+    // the guard the handler would reschedule itself forever and hang exit.
+    // The in-flight promise is shared so concurrent signals/beforeExit
+    // await the same flush instead of starting new ones.
+    let exitFlush: Promise<void> | null = null
+    const flushOnce = () => {
+      if (!exitFlush) exitFlush = flushSoon()
+      return exitFlush
+    }
     try {
       if (laminarEnabled()) {
         await initLaminar()
-        const mode = process.env.MODE || process.env.mode || "review"
-        const issueNumber = Number(process.env.ISSUE_NUMBER || 0) || undefined
-        const prNumber = Number(process.env.PR_NUMBER || 0) || undefined
-        const model = process.env.MODEL || process.env.OPENCODE_MODEL || process.env.CLI_MODEL
-        const taskSpan = await startSpan("agent.task", {
-          mode,
-          ...(issueNumber != null ? { "issue.number": issueNumber } : {}),
-          ...(prNumber != null ? { "pr.number": prNumber } : {}),
-          ...(model ? { "model.id": model } : {}),
-        })
-        // Flush with a timeout before exiting, otherwise in-flight traces are dropped.
-        const flushSoon = async () => {
-          try { endSpan(taskSpan) } catch { /* ignore */ }
-          try { await flushLaminar() } catch { /* ignore */ }
-        }
-        const withTimeout = (p: Promise<unknown>, ms: number) =>
-          Promise.race([p, new Promise((resolve) => setTimeout(resolve, ms))])
-        const finishAndExit = (code: number) => {
-          withTimeout(flushSoon(), 5000).then(() => process.exit(code))
-        }
-        // beforeExit: schedule flush work; the pending I/O + timer keep the
-        // loop alive until done (bounded by the timeout).
-        process.on("beforeExit", async () => { await withTimeout(flushSoon(), 5000) })
-        process.on("SIGTERM", () => finishAndExit(0))
-        process.on("SIGINT", () => finishAndExit(0))
+        // beforeExit: schedule flush work; the pending I/O keeps the loop
+        // alive until done (bounded by the timeout + run-once guard).
+        process.on("beforeExit", flushOnce)
+        process.on("SIGTERM", () => { flushOnce().then(() => process.exit(0)) })
+        process.on("SIGINT", () => { flushOnce().then(() => process.exit(0)) })
       }
     } catch {
       // tracing must never block main flow
