@@ -222,7 +222,7 @@ export async function runIntake(env: NodeJS.ProcessEnv = process.env): Promise<R
   }
   let scores: any = null
   try {
-    scores = await jevIntake(state, dupDocs, jevEndpointFromEnv(env))
+    scores = await jevIntake(state, dupDocs, jevEndpointFromEnv(env), fetch, { issueNumber, mode: "intake" })
   } catch {
     scores = null
   }

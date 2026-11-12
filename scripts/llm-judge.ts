@@ -7,6 +7,7 @@
  */
 import { parseModelVar } from "./model-target"
 import { isRateLimited, keysFor } from "./keys"
+import { withSpan } from "./trace"
 
 export interface JudgeScores {
   repo_fit: number
@@ -69,6 +70,7 @@ export async function llmJudge(
   const state = [`NEW: ${title}\n${body.slice(0, 1500)}`,
     ...candidates.slice(0, 10).map((c) => `#${c.number}: ${c.title} — ${c.summary}`)].join("\n");
   const prompt = PROMPT.replace("__ROLE__", role).replace("__STATE__", state);
+  return await withSpan("llm.judge", { "mode": "eval", "model.id": model }, async () => {
   const t0 = Date.now();
   const callJudge = (k: string) =>
     fetchFn(`${baseUrl}/chat/completions`, {
@@ -123,4 +125,5 @@ export async function llmJudge(
     outputTokens: data?.usage?.completion_tokens ?? 0,
     latencyMs: Date.now() - t0,
   };
+  }, env)
 }
