@@ -144,6 +144,46 @@ Optional: bot runs can push traces to [Laminar](https://laminar.sh) for visibili
 - Where to view: Laminar project dashboard (traces for intake Jev calls, llm-judge calls, and agent long tasks, carrying issue/PR number, mode, and model id).
 - No timed export to OBS and no eval scoring in this version.
 
+## Input reference
+
+### Composite action inputs (`action.yml`)
+
+| Input item | Default value | Introduced version |
+| --- | --- | --- |
+| model |  | v0.2.9 |
+| agent-kind | opencode | v0.2.9 |
+| acp-command |  | v0.2.9 |
+| github-token |  | v0.2.9 |
+| mode | review | v0.2.9 |
+| issue-number |  | v0.2.9 |
+| pr-number |  | v0.2.9 |
+| require-evidence | false | v0.2.9 |
+| require-pinned-actions | false | v0.2.9 |
+| collect-feedback | true | v0.2.9 |
+| review-prompt |  | v0.2.9 |
+| use-sub-agents | false | v0.2.9 |
+| llm-api-key |  | v0.2.9 |
+| llm-base-url |  | v0.2.9 |
+| timeout-minutes | 60 | v0.6.0 |
+| recall-mode | keyword | v0.3.0 |
+| package-source | repo | v0.6.0 |
+| package-version | latest | v0.6.0 |
+
+### Reusable workflow inputs (`.github/workflows/review.yml`)
+
+| Input item | Default value | Introduced version |
+| --- | --- | --- |
+| mode | review | v0.6.0 |
+| model |  | v0.6.0 |
+| pr-number |  | v0.6.0 |
+| runs-on | ubuntu-latest | v0.6.0 |
+| bot-repository | link-seek/opencode-github-bot | v0.6.0 |
+| package-source | repo | v0.6.0 |
+| package-version | latest | v0.6.0 |
+| bot-version | v0.6.0 | v0.6.0 |
+
+Empty default value cells mean an empty string (or no default for required inputs).
+
 ## Status
 
 v0.3.0: + pm-intake (Jev 6-question triage, docs-aligned, strict CF child tokens). Trusted Publishing (OIDC) enabled.
