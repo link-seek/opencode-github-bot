@@ -179,21 +179,18 @@ export default Plugin.define({
           ...(model ? { "model.id": model } : {}),
         })
         // Flush with a timeout before exiting, otherwise in-flight traces are dropped.
-        const flushSoon = () => {
+        const flushSoon = async () => {
           try { endSpan(taskSpan) } catch { /* ignore */ }
-          Promise.resolve()
-            .then(() => flushLaminar())
-            .catch(() => {})
-          // Ref'd: keep the loop alive up to 5s so the flush can land.
-          setTimeout(() => {}, 5000)
+          try { await flushLaminar() } catch { /* ignore */ }
         }
+        const withTimeout = (p: Promise<unknown>, ms: number) =>
+          Promise.race([p, new Promise((resolve) => setTimeout(resolve, ms))])
         const finishAndExit = (code: number) => {
-          let done = false
-          const bye = () => { if (!done) { done = true; process.exit(code) } }
-          flushSoon()
-          setTimeout(bye, 5000)
+          withTimeout(flushSoon(), 5000).then(() => process.exit(code))
         }
-        process.on("beforeExit", flushSoon)
+        // beforeExit: schedule flush work; the pending I/O + timer keep the
+        // loop alive until done (bounded by the timeout).
+        process.on("beforeExit", () => { withTimeout(flushSoon(), 5000) })
         process.on("SIGTERM", () => finishAndExit(0))
         process.on("SIGINT", () => finishAndExit(0))
       }

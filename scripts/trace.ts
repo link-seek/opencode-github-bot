@@ -97,8 +97,9 @@ export async function withSpan<T>(
   // No try/catch around the span body on purpose, except for the
   // infra-vs-fn distinction below: fn errors reach the CALLER, infra
   // failures before fn fall back to a naked run. Either way fn runs once.
-  let result: T
+  let result: T | undefined
   let invoked = false
+  let finished = false
   try {
     result = await Laminar.withSpan(
       span,
@@ -110,11 +111,13 @@ export async function withSpan<T>(
         } catch {
           /* output-recording must not fail the run */
         }
+        finished = true
         return res
       },
       true,
     )
   } catch (e) {
+    if (finished) return result as T // teardown blew after fn: keep result
     if (!invoked) return await fn() // infra died before fn: safe naked retry
     try {
       if (typeof span.recordException === "function") span.recordException(e as any)
@@ -123,7 +126,7 @@ export async function withSpan<T>(
     }
     throw e
   }
-  return result
+  return result as T
 }
 
 // aliases
