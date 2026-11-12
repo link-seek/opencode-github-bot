@@ -67,16 +67,23 @@ export async function runShell(
 
 // --- ghApi (extracted for testing) ---
 
+export function githubApiBase(): string {
+  const raw = process.env.GITHUB_API_URL || "https://api.github.com"
+  return raw.replace(/\/+$/, "")
+}
+
 export async function ghApi(
   method: string,
   path: string,
   body?: Record<string, unknown>,
   fetchFn?: typeof fetch,
   token?: string,
+  apiBase?: string,
 ): Promise<any> {
   const t = token ?? process.env.GITHUB_TOKEN
   const _fetch = fetchFn ?? fetch
-  const res = await _fetch(`https://api.github.com${path}`, {
+  const base = (apiBase || githubApiBase()).replace(/\/+$/, "")
+  const res = await _fetch(`${base}${path}`, {
     method,
     headers: {
       Authorization: `Bearer ${t}`,

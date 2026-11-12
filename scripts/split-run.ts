@@ -11,7 +11,9 @@
  *   draft comment carries <!--pm-split-plan:{...}--> for the apply phase.
  */
 
-const GH = "https://api.github.com"
+function githubApiBase(): string {
+  return (process.env.GITHUB_API_URL || "https://api.github.com").replace(/\/+$/, "")
+}
 
 function ghHeaders(token: string) {
   return {
@@ -23,7 +25,7 @@ function ghHeaders(token: string) {
 }
 
 async function gh(path: string, token: string, init?: RequestInit): Promise<any> {
-  const res = await fetch(`${GH}${path}`, { ...init, headers: { ...ghHeaders(token), ...(init?.headers ?? {}) } })
+  const res = await fetch(`${githubApiBase()}${path}`, { ...init, headers: { ...ghHeaders(token), ...(init?.headers ?? {}) } })
   if (!res.ok) {
     const t = await res.text().catch(() => "")
     throw new Error(`gh ${path}: ${res.status} ${t.slice(0, 300)}`)

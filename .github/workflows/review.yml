@@ -1,5 +1,17 @@
 name: opencode review (reusable)
 
+# GHEC/GHES audit (issue #93):
+# Hardcoded github.com/api.github.com places in this workflow + action.yml:
+#   - actions/checkout@v4 (action pin; exempt owner, tag not SHA) [unconfigurable: pin policy]
+#   - repository: ${{ inputs.bot-repository }} (default link-seek/opencode-github-bot) [now configurable]
+#   - runs-on: ${{ inputs.runs-on }} (default ubuntu-latest) [now configurable]
+#   - curl https://opencode.ai/v2/install (external install) [unconfigurable: no mirror input yet]
+#   - curl https://bun.sh/install (external install) [unconfigurable]
+#   - npm registry (opencode-github-bot package) [unconfigurable: npm config]
+#   - gh CLI targets host from GITHUB_SERVER_URL via GH_HOST (set in action.yml) [configurable via runner env]
+#   - bot code API base uses GITHUB_API_URL env (default https://api.github.com) [configurable]
+# GHEC cannot be exercised in CI (no environment) -> Tier 3: not run.
+
 # Reusable workflow for one-click PR review.
 # Consumer repos only need:
 #   jobs:
@@ -24,6 +36,16 @@ on:
       pr-number:
         description: "PR number (optional; auto-detected from pull_request event)"
         required: false
+        type: string
+      runs-on:
+        description: "Runner label for the review job (default ubuntu-latest). Use a self-hosted label for GHEC/GHES intranet runners."
+        required: false
+        default: "ubuntu-latest"
+        type: string
+      bot-repository:
+        description: "Bot source repository providing the composite action (default link-seek/opencode-github-bot). Override for a mirror/fork on GHEC."
+        required: false
+        default: "link-seek/opencode-github-bot"
         type: string
       package-source:
         description: "Bot code source: repo or npm"
@@ -64,7 +86,7 @@ permissions:
 
 jobs:
   review:
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runs-on }}
     timeout-minutes: 20
     steps:
       - name: Checkout
@@ -94,7 +116,7 @@ jobs:
       - name: Checkout bot action (versioned, central upgrade point)
         uses: actions/checkout@v4
         with:
-          repository: link-seek/opencode-github-bot
+          repository: ${{ inputs.bot-repository }}
           ref: ${{ inputs.bot-version }}
           path: .bot-action
 

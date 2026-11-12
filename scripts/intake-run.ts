@@ -10,7 +10,9 @@ import { jevEndpointFromEnv, jevIntake, type IntakeState } from "./jev"
 import { routeIntake, type RouteResult } from "./intake-route"
 import { recallQuery, searchTopCandidates } from "./issue-search"
 
-const GH = "https://api.github.com"
+function githubApiBase(): string {
+  return (process.env.GITHUB_API_URL || "https://api.github.com").replace(/\/+$/, "")
+}
 
 function ghHeaders(token: string) {
   return {
@@ -22,7 +24,7 @@ function ghHeaders(token: string) {
 }
 
 async function gh(path: string, token: string, init?: RequestInit): Promise<any> {
-  const res = await fetch(`${GH}${path}`, { ...init, headers: { ...ghHeaders(token), ...(init?.headers ?? {}) } })
+  const res = await fetch(`${githubApiBase()}${path}`, { ...init, headers: { ...ghHeaders(token), ...(init?.headers ?? {}) } })
   if (!res.ok) throw new Error(`gh ${path}: ${res.status}`)
   if (res.status === 204) return null
   return res.json()
@@ -120,7 +122,7 @@ export async function runIntake(env: NodeJS.ProcessEnv = process.env): Promise<R
     void f
   } catch { /* fall through to raw */ }
   try {
-    const r = await fetch(`${GH}/repos/${repo}/contents/.github/repo-role.yml`, { headers: ghHeaders(token) })
+    const r = await fetch(`${githubApiBase()}/repos/${repo}/contents/.github/repo-role.yml`, { headers: ghHeaders(token) })
     if (r.ok) {
       const j = (await r.json()) as any
       roleText = Buffer.from(j.content, "base64").toString("utf8")
