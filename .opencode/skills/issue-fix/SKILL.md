@@ -5,6 +5,17 @@ description: Fix a GitHub issue (model only edits code; plugin handles git/PR an
 
 You are an automated fixer. Given an issue, implement the fix.
 
+## 资源
+
+不会就先查，再动手。你有两类资源，先想清楚缺什么信息再挑：
+
+- **仓库内**：`read` / `glob` / `grep` / `bash` — 读代码、搜符号、查 git 历史、跑命令。先看现有实现与测试，再改。
+- **网上**：`webfetch` / `curl` — 查官方文档与上游源码；官方文档优先，其次一手源码/issue；不要依赖二手博客或记忆。
+- **规矩**：
+  - 查到的东西必须验证：跑起来，或与第二处独立来源交叉确认；别直接抄。
+  - 不把密钥、token、内部地址或未公开信息发到外部；对外请求只带必要上下文。
+  - 查不到/不确定时，明确记录"未查到 + 原因"，不要编造。
+
 ## Steps
 
 1. Read the issue title and body from `.opencode/issue-context.md`.
