@@ -32,3 +32,8 @@
 ## 7. 可观测先行
 - agent 跑起来必须能被看见：intake/llm-judge 走 `withSpan` + 结尾 flush；agent 长任务由 wrapper 在进程外上报（进程内 flush 不可靠）。
 - 短命进程规范：`disableBatch` + 结束时显式 flush + 超时兜底（社区标准做法）。
+
+## 8. 自家仓和消费仓走不同的源（铁律，不许改）
+- 消费仓默认 `package-source: npm`：只认 npm 包，不碰本仓代码。
+- 本仓（opencode-github-bot 自己）所有 workflow 显式写 `package-source: repo`：永远吃自己 main 上最新代码，不经过发版——dogfood 前置，坏了自己先炸。
+- 任何人不得把本仓改成默认 npm（那等于放弃 dogfood），也不得让消费仓默认 repo（那等于把未发布代码漏出去）。
