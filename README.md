@@ -77,7 +77,6 @@ Registers tools: `gh-pr-comment`, `gh-pr-review`, `finish-review`, `finish-fix`.
 ```yaml
 - uses: ./node_modules/opencode-github-bot
   with:
-  with:
     # Code comes from the npm install above (pinned); do NOT re-install.
     package-source: repo
     model: ${{ vars.OPENCODE_MODEL }}
@@ -100,7 +99,6 @@ Two-phase, human-gated. Only `needs-split` issues (see #9) enter; everything els
 # Phase 1: draft (manual dispatch, or your own trigger on needs-split)
 - uses: ./node_modules/opencode-github-bot
   with:
-  with:
     # Code comes from the npm install above (pinned); do NOT re-install.
     package-source: repo
     model: ${{ vars.OPENCODE_MODEL }}
@@ -114,7 +112,6 @@ Two-phase, human-gated. Only `needs-split` issues (see #9) enter; everything els
 
 # Phase 2: create (OWNER/MEMBER comments "approve split" on the issue)
 - uses: ./node_modules/opencode-github-bot
-  with:
   with:
     # Code comes from the npm install above (pinned); do NOT re-install.
     package-source: repo
