@@ -38,7 +38,7 @@ function resolvePackageVersion(): string {
     if (parent === dir) break
     dir = parent
   }
-  return "0.6.0"
+  return "0.7.0"
 }
 
 export const PACKAGE_VERSION = resolvePackageVersion()
