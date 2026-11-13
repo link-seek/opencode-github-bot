@@ -132,12 +132,30 @@ describe("runInit", () => {
     const without = await runInit({ cwd: root2, env: env2 })
     expect(without.ok).toBe(true)
     expect(without.notes.join("\n")).toContain("repo-role.yml")
+    expect(without.notes.join("\n")).toContain("rejected-out-of-scope")
     fs2.mkdirSync(path2.join(root2, ".github"), { recursive: true })
     fs2.writeFileSync(path2.join(root2, ".github", "repo-role.yml"), "owns: everything\n")
     const withFile = await runInit({ cwd: root2, env: env2 })
     expect(withFile.ok).toBe(true)
     expect(withFile.notes).toEqual([])
     fs2.rmSync(root2, { recursive: true })
+  })
+  test("generated workflow is strict-YAML-valid in all option combos", async () => {
+    const yaml = await import("yaml")
+    const combos: any[] = [
+      {},
+      { version: "v9.9.9" },
+      { timeoutMinutes: 45 },
+      { model: "opencode-go/beam-free" },
+      { mode: "intake" },
+      { mode: "fix-issue" },
+    ]
+    for (const opts of combos) {
+      const text = generateWorkflow(opts)
+      const doc = yaml.parse(text)
+      expect(doc.jobs.bot.steps.length).toBe(3)
+      expect(doc.jobs.bot.steps[2].with.mode).toContain("intake")
+    }
   })
   test("upgrade single-pass counts each ref once, dry-run validates projections", async () => {
     const fs = await import("node:fs")

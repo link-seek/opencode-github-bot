@@ -20,6 +20,20 @@ export const OPTIONAL_VARS = ["JEV_MODEL"] as const
 // Missing file is a non-blocking reminder (notes, not missing) so
 // review-only repos still report OK.
 export const RECOMMENDED_FILES = [".github/repo-role.yml"] as const
+// Labels the bot applies in intake/split flows. Missing ones make labeling
+// 403-skip (advisory, verdict still lands in the comment) — remind at init.
+export const RECOMMENDED_LABELS = [
+  "needs-triage",
+  "needs-human",
+  "needs-role",
+  "needs-info",
+  "needs-review",
+  "rejected-out-of-scope",
+  "ready",
+  "needs-split",
+  "split-proposed",
+  "split-applied",
+] as const
 export const NPM_PACKAGE = "opencode-github-bot"
 // Deprecated: cross-repo reusable workflow route is no longer used. Kept (empty)
 // only for backward-compatible imports.
@@ -100,10 +114,16 @@ export function detectType(root?: string): RepoType {
 /** Files that are recommended but not required (intake-only). Never blocks OK. */
 export function checkRecommendedFiles(cwd: string = process.cwd()): string[] {
   const notes: string[] = []
+  let intakeSetup = false
   for (const f of RECOMMENDED_FILES) {
     if (!existsSync(join(cwd, f))) {
       notes.push(`file ${f} (needed for intake triage, review/fix work without it)`)
+      intakeSetup = true
     }
+  }
+  // Label reminder only while setting up intake (don't spam review-only repos).
+  if (intakeSetup) {
+    notes.push(`labels for intake/split flows (pre-create or labeling 403-skips advisory): ${[...RECOMMENDED_LABELS].join(", ")}`)
   }
   return notes
 }

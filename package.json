@@ -16,8 +16,8 @@
     "README.md"
   ],
   "dependencies": {
-    "@opencode/plugin": "latest",
-    "@lmnr-ai/lmnr": "0.8.55"
+    "@lmnr-ai/lmnr": "0.8.55",
+    "@opencode/plugin": "latest"
   },
   "keywords": [
     "opencode",
@@ -43,7 +43,8 @@
   },
   "devDependencies": {
     "@types/bun": "latest",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "yaml": "^2.9.1"
   },
   "directories": {
     "test": "tests"
