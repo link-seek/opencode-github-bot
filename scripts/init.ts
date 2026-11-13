@@ -252,6 +252,8 @@ jobs:
       - name: Run OpenCode bot
         uses: ./node_modules/opencode-github-bot
         with:
+          # Code comes from the npm install above (pinned); do NOT re-install.
+          package-source: repo
           mode: ${mode}
 ${modelLine}
           github-token: \${{ secrets.AGENT_GITHUB_TOKEN }}
@@ -409,10 +411,13 @@ const VERSION_RE = /v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?/g
 function upgradeReplacements(content: string, target: string): { next: string; count: number } {
   // Single pass: alternation is ordered longest-first and RegExp consumes
   // each match, so patterns can neither overlap nor re-match rewritten output.
-  const re = /(link-seek\/opencode-github-bot(?:\/[^\s'"`]*)?@)v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?|(opencode-github-bot@)v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?|((?:bot-version|package-version|bot_version|package_version)\s*:\s*)v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?/g
+  const re = /(link-seek\/opencode-github-bot(?:\/[^\s'"`]*)?@)(v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?)|(opencode-github-bot@)(v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?)|((?:bot-version|package-version|bot_version|package_version)\s*:\s*)(v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?)/g
   let count = 0
   const next = content.replace(re, (...args: any[]) => {
-    const prefix = (args[1] ?? args[2] ?? args[3] ?? "") as string
+    const match = args[0] as string
+    const prefix = (args[1] ?? args[3] ?? args[5] ?? "") as string
+    const ver = (args[2] ?? args[4] ?? args[6] ?? "") as string
+    if (ver === target) return match // already there: no-op, no count
     count++
     return prefix + target
   })
