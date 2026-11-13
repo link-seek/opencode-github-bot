@@ -107,6 +107,8 @@ describe("runInit", () => {
     expect(generateWorkflow({})).toContain("github.event_name == 'issues' && 'intake'")
     expect(generateWorkflow({})).toContain("issue-number: ${{ github.event.issue.number }}")
     expect(generateWorkflow({})).toContain("JEV_MODEL: ${{ vars.JEV_MODEL }}")
+    // Agent auth goes through inputs.llm-api-key (env alone is ignored by action.yml)
+    expect(generateWorkflow({})).toContain("llm-api-key: ${{ secrets.OPENCODE_API_KEY }}")
     expect(generateWorkflow({ timeoutMinutes: 45 })).toContain("timeout-minutes: 45")
     expect(() => generateWorkflow({ timeoutMinutes: 0 })).toThrow()
     expect(() => generateWorkflow({ timeoutMinutes: 9999 })).toThrow()

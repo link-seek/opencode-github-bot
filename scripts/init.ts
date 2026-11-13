@@ -281,6 +281,9 @@ ${modelLine}
           github-token: \${{ secrets.AGENT_GITHUB_TOKEN }}
           pr-number: \${{ github.event.pull_request.number }}
           issue-number: \${{ github.event.issue.number }}
+          # Agent auth: the composite action reads ONLY inputs.llm-api-key
+          # for review/fix-issue/split-plan (workflow env alone is ignored).
+          llm-api-key: \${{ secrets.OPENCODE_API_KEY }}
         env:
           OPENCODE_API_KEY: \${{ secrets.OPENCODE_API_KEY }}
           JEV_MODEL: \${{ vars.JEV_MODEL }}
