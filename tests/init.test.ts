@@ -4,8 +4,8 @@ import {
   checkVars,
   detectRepoType,
   generateWorkflow,
-  REUSABLE_WORKFLOW,
   runInit,
+  runUpgrade,
 } from "../scripts/init"
 
 describe("detectRepoType", () => {
@@ -75,7 +75,8 @@ describe("runInit", () => {
     const res = await runInit({ cwd: root, workflowPath: "custom/dir/bot.yml", write: true, env: {} })
     expect(res.written).toBe(true)
     expect(fs.existsSync(path.join(root, "custom", "dir", "bot.yml"))).toBe(true)
-    expect(res.content).toContain(REUSABLE_WORKFLOW)
+    expect(res.content).toContain("actions/checkout@v4")
+    expect(res.content).toContain("npm install")
     fs.rmSync(root, { recursive: true })
   })
   test("no silent overwrite without force", async () => {

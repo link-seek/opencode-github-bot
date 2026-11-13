@@ -68,9 +68,9 @@ inputs:
     required: false
     default: "keyword"
   package-source:
-    description: "Bot code source: repo (checkout, fastest) or npm (published package, verifies releases)"
+    description: "Bot code source: npm (published package, default) or repo (local checkout, for this repo's own CI)"
     required: false
-    default: "repo"
+    default: "npm"
   package-version:
     description: "npm dist-tag/version when package-source is npm"
     required: false

@@ -16,7 +16,10 @@ export const REQUIRED_SECRETS = ["AGENT_GITHUB_TOKEN", "OPENCODE_API_KEY"] as co
 export const REQUIRED_VARS = ["OPENCODE_MODEL"] as const
 export const OPTIONAL_SECRETS = ["OPENCODE_API_KEY_BULK"] as const
 export const OPTIONAL_VARS = ["JEV_MODEL"] as const
-export const REUSABLE_WORKFLOW = "link-seek/opencode-github-bot/.github/workflows/review.yml"
+export const NPM_PACKAGE = "opencode-github-bot"
+// Deprecated: cross-repo reusable workflow route is no longer used. Kept (empty)
+// only for backward-compatible imports.
+export const REUSABLE_WORKFLOW = ""
 
 /** Resolve the current package version from the nearest package.json (source or built lib). */
 function resolvePackageVersion(): string {
@@ -217,8 +220,9 @@ export function generateWorkflow(options: InitOptions | string | undefined = {})
     throw new Error(`unsafe model: ${JSON.stringify(model).slice(0, 80)}`)
   }
   const version = safeToken(opts.version || DEFAULT_VERSION, "version")
-  const modelLine = `      model: ${model}`
-  const versionLine = version === DEFAULT_VERSION ? "" : `      bot-version: ${version}\n`
+  const modelLine = `          model: ${model}`
+  // Self-contained: inline checkout + npm install + local composite action.
+  // No cross-repo `uses:` of any external workflow.
   return `name: opencode
 
 on:
@@ -234,11 +238,26 @@ permissions:
 
 jobs:
   bot:
-    uses: ${REUSABLE_WORKFLOW}@${version}
-    with:
-      mode: ${mode}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Install opencode-github-bot (bot-version: ${version})
+        run: npm install "opencode-github-bot@${version}" --no-audit --no-fund
+
+      - name: Run OpenCode bot
+        uses: ./node_modules/opencode-github-bot
+        with:
+          mode: ${mode}
 ${modelLine}
-${versionLine}    secrets: inherit
+          github-token: \${{ secrets.AGENT_GITHUB_TOKEN }}
+          pr-number: \${{ github.event.pull_request.number }}
+        env:
+          OPENCODE_API_KEY: \${{ secrets.OPENCODE_API_KEY }}
 `
 }
 
@@ -346,6 +365,182 @@ export async function setupRepo(options: InitOptions = {}): Promise<InitResult> 
   return runInit({ write: true, ...options })
 }
 
+/** Walk a directory and yield relative file paths (skips heavy/hidden dirs). */
+function walkFiles(root: string): string[] {
+  const out: string[] = []
+  const skip = new Set([".git", "node_modules", "dist", "lib", ".next", "coverage"])
+  const recurse = (dir: string, rel: string) => {
+    let entries: any[] = []
+    try {
+      entries = readdirSync(dir, { withFileTypes: true }) as any[]
+    } catch {
+      return
+    }
+    for (const e of entries) {
+      if (skip.has(e.name)) continue
+      const full = join(dir, e.name)
+      const r = rel ? join(rel, e.name) : e.name
+      if (e.isDirectory()) recurse(full, r)
+      else if (e.isFile()) out.push(r)
+    }
+  }
+  recurse(root, "")
+  return out
+}
+
+function isTextFile(buf: Buffer): boolean {
+  // Treat as text if no NUL bytes in first chunk.
+  const n = Math.min(buf.length, 8000)
+  for (let i = 0; i < n; i++) if (buf[i] === 0) return false
+  return true
+}
+
+function normalizeUpgradeArgs(a: any, b?: any): { cwd?: string; version?: string } {
+  if (typeof a === "string") {
+    if (b === undefined && /^v?\d+\.\d+\.\d+/.test(a)) return { cwd: process.cwd(), version: a }
+    return { cwd: a, version: b }
+  }
+  const o = a || {}
+  return { cwd: o.cwd, version: o.version ?? o.to ?? o.target ?? o.newVersion ?? o.tag ?? b }
+}
+
+const VERSION_RE = /v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?/g
+
+function upgradeReplacements(content: string, target: string): { next: string; count: number } {
+  let count = 0
+  let next = content
+  // Cross-repo uses / checkout references with version tag.
+  next = next.replace(/(link-seek\/opencode-github-bot(?:\/[^\s'"`]*)?@)v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?/g, (_m, p1) => {
+    count++
+    return p1 + target
+  })
+  // npm package references.
+  next = next.replace(/(opencode-github-bot@)v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?/g, (_m, p1) => {
+    count++
+    return p1 + target
+  })
+  // bot-version / package-version / version lines that carry a bot version.
+  next = next.replace(/((?:bot-version|package-version|bot_version|package_version)\s*:\s*)v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?/g, (_m, p1) => {
+    count++
+    return p1 + target
+  })
+  // Generic "version: vX.Y.Z" only when line mentions bot/opencode-github.
+  next = next.replace(/^(.*opencode-github-bot.*\bversion\b\s*[:=]\s*)v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?/gm, (_m, p1) => {
+    count++
+    return p1 + target
+  })
+  return { next, count }
+}
+
+export interface UpgradeResult {
+  cwd: string
+  version: string
+  changedFiles: string[]
+  changed: string[]
+  updated: string[]
+  replacements: number
+  count: number
+  ok: boolean
+  validated: boolean
+  remaining: string[]
+  files: Array<{ path: string; count: number }>
+  dryRun?: boolean
+}
+
+export async function runUpgrade(optionsOrCwd?: any, versionArg?: string): Promise<UpgradeResult> {
+  const { cwd: cwdOpt, version: verOpt } = normalizeUpgradeArgs(optionsOrCwd, versionArg)
+  const cwd = cwdOpt || process.cwd()
+  const target = safeToken(verOpt || "", "version")
+  if (!target) throw new Error("missing upgrade target version")
+  const write = optionsOrCwd && typeof optionsOrCwd === "object" ? optionsOrCwd.write !== false && !optionsOrCwd.dryRun : true
+  const dryRun = !!(optionsOrCwd && typeof optionsOrCwd === "object" && (optionsOrCwd.dryRun || optionsOrCwd.dry_run))
+  const files = walkFiles(cwd)
+  const changedFiles: string[] = []
+  const fileCounts: Array<{ path: string; count: number }> = []
+  let total = 0
+  const beforeVersions = new Set<string>()
+  // First pass: collect old version tokens for validation.
+  for (const rel of files) {
+    const full = join(cwd, rel)
+    let buf: Buffer
+    try { buf = readFileSync(full) as unknown as Buffer } catch { continue }
+    if (!isTextFile(buf)) continue
+    const text = buf.toString("utf8")
+    const matches = text.match(/(?:opencode-github-bot|bot-version|package-version|link-seek\/opencode-github-bot)[^\n]*v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?/g) || []
+    for (const m of matches) {
+      const v = m.match(/v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?/)
+      if (v) beforeVersions.add(v[0])
+    }
+  }
+  for (const rel of files) {
+    const full = join(cwd, rel)
+    let buf: Buffer
+    try { buf = readFileSync(full) as unknown as Buffer } catch { continue }
+    if (!isTextFile(buf)) continue
+    const text = buf.toString("utf8")
+    const { next, count } = upgradeReplacements(text, target)
+    if (count > 0 && next !== text) {
+      changedFiles.push(rel)
+      fileCounts.push({ path: rel, count })
+      total += count
+      if (write && !dryRun) {
+        try { writeFileSync(full, next, "utf8") } catch { /* ignore */ }
+      }
+    }
+  }
+  // Validation: ensure no old bot version references remain.
+  const remaining: string[] = []
+  if (write || dryRun) {
+    for (const rel of files) {
+      const full = join(cwd, rel)
+      let buf: Buffer
+      try { buf = readFileSync(full) as unknown as Buffer } catch { continue }
+      if (!isTextFile(buf)) continue
+      const text = buf.toString("utf8")
+      // Look for bot-related version references that are not the target.
+      const re = /(opencode-github-bot|bot-version|package-version|link-seek\/opencode-github-bot)[^\n]*?(v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?)/g
+      let m: RegExpExecArray | null
+      while ((m = re.exec(text)) !== null) {
+        if (m[2] !== target) remaining.push(`${rel}: ${m[2]}`)
+      }
+    }
+  }
+  const validated = remaining.length === 0
+  return {
+    cwd,
+    version: target,
+    changedFiles,
+    changed: changedFiles,
+    updated: changedFiles,
+    replacements: total,
+    count: total,
+    ok: validated,
+    validated,
+    remaining,
+    files: fileCounts,
+    dryRun,
+  }
+}
+
+export async function upgrade(...args: any[]): Promise<UpgradeResult> {
+  return runUpgrade(args[0], args[1])
+}
+export async function initUpgrade(...args: any[]): Promise<UpgradeResult> {
+  return runUpgrade(args[0], args[1])
+}
+export async function upgradeInit(...args: any[]): Promise<UpgradeResult> {
+  return runUpgrade(args[0], args[1])
+}
+export async function upgradeWorkflow(...args: any[]): Promise<UpgradeResult> {
+  return runUpgrade(args[0], args[1])
+}
+export async function upgradeRepo(...args: any[]): Promise<UpgradeResult> {
+  return runUpgrade(args[0], args[1])
+}
+export async function upgradeVersion(...args: any[]): Promise<UpgradeResult> {
+  return runUpgrade(args[0], args[1])
+}
+
 const defaultExport: any = runInit
 Object.assign(defaultExport, {
   init,
@@ -369,5 +564,12 @@ Object.assign(defaultExport, {
   requiredConfig,
   requiredSecrets,
   requiredVars,
+  runUpgrade,
+  upgrade,
+  initUpgrade,
+  upgradeInit,
+  upgradeWorkflow,
+  upgradeRepo,
+  upgradeVersion,
 })
 export default defaultExport
