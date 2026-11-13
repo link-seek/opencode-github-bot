@@ -48,6 +48,10 @@ async function main() {
     } else {
       console.error("\nBot configuration OK.")
     }
+    if (res.notes && res.notes.length > 0) {
+      console.error("\nRecommended (intake triage needs it, review/fix work without it):")
+      for (const n of res.notes) console.error("  - " + n)
+    }
     if (res.written) console.error(`Wrote ${res.workflowPath}`)
     return
   }
