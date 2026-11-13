@@ -52,6 +52,7 @@ export interface InitOptions {
   mode?: string
   model?: string
   version?: string
+  timeoutMinutes?: number
   workflowPath?: string
   write?: boolean
   force?: boolean
@@ -221,6 +222,10 @@ export function generateWorkflow(options: InitOptions | string | undefined = {})
     throw new Error(`unsafe model: ${JSON.stringify(model).slice(0, 80)}`)
   }
   const version = safeToken(opts.version || DEFAULT_VERSION, "version")
+  const timeoutMinutes = opts.timeoutMinutes ?? 20
+  if (!Number.isInteger(timeoutMinutes) || timeoutMinutes < 1 || timeoutMinutes > 360) {
+    throw new Error(`unsafe timeoutMinutes: ${JSON.stringify(opts.timeoutMinutes).slice(0, 80)}`)
+  }
   const modelLine = `          model: ${model}`
   // Self-contained: inline checkout + npm install + local composite action.
   // No cross-repo `uses:` of any external workflow.
@@ -240,7 +245,7 @@ permissions:
 jobs:
   bot:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: ${timeoutMinutes}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -320,7 +325,14 @@ export async function runInit(options: InitOptions = {}): Promise<InitResult> {
     throw new Error("refusing empty workflowPath (would silently fall back to default)")
   }
   const workflowPath = rawPath || ".github/workflows/opencode.yml"
-  const content = generateWorkflow({ ...options, repoType })
+  let content: string
+  try {
+    content = generateWorkflow({ ...options, repoType })
+  } catch (e) {
+    // Generation-time validation (mode/model/version/timeoutMinutes):
+    // return InitResult.error instead of rejecting, so --json exits 1 with machine-readable error.
+    return { repoType, workflowPath, content: "", written: false, missing: listMissing(options.env), ok: false, error: String((e as Error)?.message ?? e).slice(0, 200) }
+  }
   const missing = listMissing(options.env)
   const full = resolve(cwd, workflowPath)
   const rel = relative(cwd, full)
