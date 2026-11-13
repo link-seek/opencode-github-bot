@@ -423,8 +423,10 @@ function upgradeReplacements(content: string, target: string): { next: string; c
   })
   // Generic "version: vX.Y.Z" only on lines mentioning the bot (kept separate:
   // it is line-anchored and cannot overlap the three patterns above).
-  const re2 = /^((?:.*opencode-github-bot.*\bversion\b\s*[:=]\s*))v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?/gm
-  const final = next.replace(re2, (_mm, p1) => {
+  // Same at-target guard: skip lines already at the target version.
+  const re2 = /^((?:.*opencode-github-bot.*\bversion\b\s*[:=]\s*))(v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?)/gm
+  const final = next.replace(re2, (mm, p1, ver) => {
+    if (ver === target) return mm
     count++
     return p1 + target
   })
