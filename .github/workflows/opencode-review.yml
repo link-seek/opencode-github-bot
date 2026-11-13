@@ -29,7 +29,7 @@ jobs:
         uses: ./
         with:
           model: ${{ vars.OPENCODE_MODEL }}
-          package-source: ${{ github.ref == 'refs/heads/main' && 'npm' || 'repo' }}
+          package-source: repo
           package-version: latest
           llm-api-key: ${{ secrets.OPENCODE_API_KEY }}
           github-token: ${{ secrets.AGENT_GITHUB_TOKEN }}

@@ -6,27 +6,9 @@ Built on OpenCode v2's plugin system (`@opencode/plugin`). Does not modify OpenC
 
 ## Usage
 
-### Option A: reusable workflow (recommended, one job)
-
-```yaml
-# .github/workflows/opencode.yml
-name: opencode
-on:
-  pull_request:
-    types: [opened, synchronize, ready_for_review]
-
-jobs:
-  review:
-    uses: link-seek/opencode-github-bot/.github/workflows/review.yml@v0.6.0
-    with:
-      mode: review
-      model: ${{ vars.OPENCODE_MODEL }}   # optional override
-    secrets: inherit
-```
-
-Version is centrally locked in the reusable workflow; upgrading only changes the tag.
-
-### Option B: composite action (advanced)
+The only supported dependency is the npm package `opencode-github-bot`. Generated workflows are
+self-contained: they check out the consumer repo, install the package from npm, and run the
+bundled composite action from `node_modules`. No cross-repo `uses:` is required.
 
 ```yaml
 # .github/workflows/opencode.yml
@@ -37,24 +19,38 @@ on:
   issues:
     types: [assigned]
 
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
 jobs:
   bot:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: write
-      issues: write
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: link-seek/opencode-github-bot@v0.2.9
+      - name: Checkout
+        uses: actions/checkout@v4
         with:
+          fetch-depth: 1
+
+      - name: Install opencode-github-bot
+        run: npm install "opencode-github-bot@v0.6.0" --no-audit --no-fund
+
+      - name: Run OpenCode bot
+        uses: ./node_modules/opencode-github-bot
+        with:
+          # Code comes from the npm install above (pinned); do NOT re-install.
+          package-source: repo
+          mode: review
           model: ${{ vars.OPENCODE_MODEL }}
           github-token: ${{ secrets.AGENT_GITHUB_TOKEN }}
-          mode: review
           pr-number: ${{ github.event.pull_request.number }}
         env:
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
 ```
+
+Upgrading: `npx opencode-github-bot init upgrade vX.Y.Z` (rewrites every version reference in the repo).
 
 ## One-click setup
 
@@ -79,8 +75,10 @@ Registers tools: `gh-pr-comment`, `gh-pr-review`, `finish-review`, `finish-fix`.
 ## Intake mode (pm triage)
 
 ```yaml
-- uses: link-seek/opencode-github-bot@v0.3.0
+- uses: ./node_modules/opencode-github-bot
   with:
+    # Code comes from the npm install above (pinned); do NOT re-install.
+    package-source: repo
     model: ${{ vars.OPENCODE_MODEL }}
     github-token: ${{ secrets.AGENT_GITHUB_TOKEN }}
     mode: intake
@@ -99,8 +97,10 @@ Two-phase, human-gated. Only `needs-split` issues (see #9) enter; everything els
 
 ```yaml
 # Phase 1: draft (manual dispatch, or your own trigger on needs-split)
-- uses: link-seek/opencode-github-bot@v0.3.0
+- uses: ./node_modules/opencode-github-bot
   with:
+    # Code comes from the npm install above (pinned); do NOT re-install.
+    package-source: repo
     model: ${{ vars.OPENCODE_MODEL }}
     github-token: ${{ secrets.AGENT_GITHUB_TOKEN }}
     mode: split-plan
@@ -111,8 +111,10 @@ Two-phase, human-gated. Only `needs-split` issues (see #9) enter; everything els
 #    hidden <!--pm-split-plan JSON-->, labels split-proposed (or a reject reason)
 
 # Phase 2: create (OWNER/MEMBER comments "approve split" on the issue)
-- uses: link-seek/opencode-github-bot@v0.3.0
+- uses: ./node_modules/opencode-github-bot
   with:
+    # Code comes from the npm install above (pinned); do NOT re-install.
+    package-source: repo
     model: ${{ vars.OPENCODE_MODEL }}
     github-token: ${{ secrets.AGENT_GITHUB_TOKEN }}
     mode: split-apply
