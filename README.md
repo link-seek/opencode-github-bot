@@ -168,10 +168,12 @@ Optional: bot runs can push traces to [Laminar](https://laminar.sh) for visibili
 | llm-base-url |  | v0.2.9 |
 | timeout-minutes | 60 | v0.6.0 |
 | recall-mode | keyword | v0.3.0 |
-| package-source | repo | v0.6.0 |
+| package-source | npm | v0.6.0 |
 | package-version | latest | v0.6.0 |
 
-### Reusable workflow inputs (`.github/workflows/review.yml`)
+> `review.yml` reusable workflow 已在 v0.7.0 删除（#103/#105）：新仓只用 `init` 生成的自包含 workflow，升级走 `init upgrade`。以下仅为历史对照，不再作为接入路径。
+
+### Reusable workflow inputs (`.github/workflows/review.yml`, ≤ v0.6.0, removed)
 
 | Input item | Default value | Introduced version |
 | --- | --- | --- |
