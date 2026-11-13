@@ -275,12 +275,15 @@ jobs:
         with:
           # Code comes from the npm install above (pinned); do NOT re-install.
           package-source: repo
-          mode: ${mode}
+          # Route by event: issues get intake triage, PRs get review.
+          mode: \${{ github.event_name == 'issues' && 'intake' || '${mode}' }}
 ${modelLine}
           github-token: \${{ secrets.AGENT_GITHUB_TOKEN }}
           pr-number: \${{ github.event.pull_request.number }}
+          issue-number: \${{ github.event.issue.number }}
         env:
           OPENCODE_API_KEY: \${{ secrets.OPENCODE_API_KEY }}
+          JEV_MODEL: \${{ vars.JEV_MODEL }}
 `
 }
 

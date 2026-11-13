@@ -103,6 +103,10 @@ describe("runInit", () => {
     // Step names containing ": " must be quoted or the workflow YAML is invalid
     // (fork test: GitHub refused to run the generated file, startup failure).
     expect(generateWorkflow({})).toContain('- name: "Install opencode-github-bot (bot-version:')
+    // Event routing: issues get intake, PRs get the requested mode (default review).
+    expect(generateWorkflow({})).toContain("github.event_name == 'issues' && 'intake'")
+    expect(generateWorkflow({})).toContain("issue-number: ${{ github.event.issue.number }}")
+    expect(generateWorkflow({})).toContain("JEV_MODEL: ${{ vars.JEV_MODEL }}")
     expect(generateWorkflow({ timeoutMinutes: 45 })).toContain("timeout-minutes: 45")
     expect(() => generateWorkflow({ timeoutMinutes: 0 })).toThrow()
     expect(() => generateWorkflow({ timeoutMinutes: 9999 })).toThrow()
