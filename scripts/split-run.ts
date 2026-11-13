@@ -368,6 +368,22 @@ async function listComments(repo: string, n: number, token: string, why: string)
     return []
   }
 }
+/* Locked repo decisions for the planner: resolved relative to THIS script
+ * (scripts/ -> ../docs/DECISIONS.md), so it works no matter where the
+ * agent checks out. Best-effort: empty string when unreadable. */
+export async function loadDecisions(cap = 4000): Promise<string> {
+  try {
+    const fs = await import("node:fs")
+    const path = await import("node:path")
+    const { fileURLToPath } = await import("node:url")
+    const here = path.dirname(fileURLToPath(import.meta.url))
+    const raw = fs.readFileSync(path.join(here, "..", "docs", "DECISIONS.md"), "utf8")
+    return raw.slice(0, cap)
+  } catch {
+    return "(DECISIONS.md unavailable)"
+  }
+}
+
 /* Live repo tree for the planner: deterministic, fresh every run, so the
  * plan can only reference paths that actually exist (no hallucinated dirs).
  * Best-effort: on any fs error returns a one-line notice, never throws. */
@@ -485,6 +501,7 @@ async function runPlanPre(env: NodeJS.ProcessEnv): Promise<void> {
   }
   const comments = await listComments(repo, n, token, "plan-pre context")
   const tree = await listRepoTree(process.cwd())
+  const decisions = await loadDecisions()
   const ctx = [
     `# Split context: #${n} ${String(issue.title ?? "")}`,
     ``,
@@ -508,6 +525,10 @@ async function runPlanPre(env: NodeJS.ProcessEnv): Promise<void> {
     ``,
     `## Output contract`,
     `Write pm-split-plan.json in the current directory per the pm-split skill. Do NOT comment or create issues.`,
+    ``,
+    `## Repo conventions (must-read, binding)`,
+    `The bot repo's locked decisions apply to this task:`,
+    decisions,
   ].join("\n")
   const fs = await import("node:fs")
   await fs.promises.mkdir(".opencode", { recursive: true })

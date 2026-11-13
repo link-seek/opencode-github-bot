@@ -11,6 +11,7 @@
     ".opencode/",
     "scripts/",
     "lib/",
+    "docs/",
     "action.yml",
     "README.md"
   ],
