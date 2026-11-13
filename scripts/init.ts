@@ -55,6 +55,7 @@ export interface InitOptions {
   workflowPath?: string
   write?: boolean
   force?: boolean
+  json?: boolean
   env?: Record<string, string | undefined>
 }
 
