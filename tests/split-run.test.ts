@@ -5,6 +5,7 @@ import {
   ghStatus,
   isDuplicateDraft,
   listRepoTree,
+  loadDecisions,
   parseIntakeMarker,
   parseSplitPlanMarker,
   renderDraft,
@@ -216,5 +217,10 @@ describe("rendering", () => {
     expect(tree).toContain("scripts/a.ts")
     expect(tree.some((p) => p.includes(".git") || p.includes("node_modules"))).toBe(false)
     fs.rmSync(root, { recursive: true })
+  })
+  test("loadDecisions reads the locked decisions doc", async () => {
+    const text = await loadDecisions()
+    expect(text).toContain("单一依赖点")
+    expect(text.length).toBeGreaterThan(500)
   })
 })
