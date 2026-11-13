@@ -100,6 +100,9 @@ describe("runInit", () => {
     expect(generateWorkflow({ model: "opencode-go/beam-free" })).toContain("model: opencode-go/beam-free")
     expect(generateWorkflow({ version: "v9.9.9" })).toContain("bot-version: v9.9.9")
     expect(generateWorkflow({})).toContain("timeout-minutes: 20")
+    // Step names containing ": " must be quoted or the workflow YAML is invalid
+    // (fork test: GitHub refused to run the generated file, startup failure).
+    expect(generateWorkflow({})).toContain('- name: "Install opencode-github-bot (bot-version:')
     expect(generateWorkflow({ timeoutMinutes: 45 })).toContain("timeout-minutes: 45")
     expect(() => generateWorkflow({ timeoutMinutes: 0 })).toThrow()
     expect(() => generateWorkflow({ timeoutMinutes: 9999 })).toThrow()

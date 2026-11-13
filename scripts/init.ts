@@ -267,7 +267,7 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Install opencode-github-bot (bot-version: ${version})
+      - name: "Install opencode-github-bot (bot-version: ${version})"
         run: npm install "opencode-github-bot@${version}" --no-audit --no-fund
 
       - name: Run OpenCode bot
