@@ -267,7 +267,7 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Install opencode-github-bot (bot-version: ${version})
+      - name: "Install opencode-github-bot (bot-version: ${version})"
         run: npm install "opencode-github-bot@${version}" --no-audit --no-fund
 
       - name: Run OpenCode bot
@@ -275,12 +275,18 @@ jobs:
         with:
           # Code comes from the npm install above (pinned); do NOT re-install.
           package-source: repo
-          mode: ${mode}
+          # Route by event: issues get intake triage, PRs get review.
+          mode: \${{ github.event_name == 'issues' && 'intake' || '${mode}' }}
 ${modelLine}
           github-token: \${{ secrets.AGENT_GITHUB_TOKEN }}
           pr-number: \${{ github.event.pull_request.number }}
+          issue-number: \${{ github.event.issue.number }}
+          # Agent auth: the composite action reads ONLY inputs.llm-api-key
+          # for review/fix-issue/split-plan (workflow env alone is ignored).
+          llm-api-key: \${{ secrets.OPENCODE_API_KEY }}
         env:
           OPENCODE_API_KEY: \${{ secrets.OPENCODE_API_KEY }}
+          JEV_MODEL: \${{ vars.JEV_MODEL }}
 `
 }
 
