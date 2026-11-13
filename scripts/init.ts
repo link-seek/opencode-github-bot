@@ -407,29 +407,23 @@ function normalizeUpgradeArgs(a: any, b?: any): { cwd?: string; version?: string
 const VERSION_RE = /v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?/g
 
 function upgradeReplacements(content: string, target: string): { next: string; count: number } {
+  // Single pass: alternation is ordered longest-first and RegExp consumes
+  // each match, so patterns can neither overlap nor re-match rewritten output.
+  const re = /(link-seek\/opencode-github-bot(?:\/[^\s'"`]*)?@)v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?|(opencode-github-bot@)v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?|((?:bot-version|package-version|bot_version|package_version)\s*:\s*)v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?/g
   let count = 0
-  let next = content
-  // Cross-repo uses / checkout references with version tag.
-  next = next.replace(/(link-seek\/opencode-github-bot(?:\/[^\s'"`]*)?@)v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?/g, (_m, p1) => {
+  const next = content.replace(re, (...args: any[]) => {
+    const prefix = (args[1] ?? args[2] ?? args[3] ?? "") as string
+    count++
+    return prefix + target
+  })
+  // Generic "version: vX.Y.Z" only on lines mentioning the bot (kept separate:
+  // it is line-anchored and cannot overlap the three patterns above).
+  const re2 = /^((?:.*opencode-github-bot.*\bversion\b\s*[:=]\s*))v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?/gm
+  const final = next.replace(re2, (_mm, p1) => {
     count++
     return p1 + target
   })
-  // npm package references.
-  next = next.replace(/(opencode-github-bot@)v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?/g, (_m, p1) => {
-    count++
-    return p1 + target
-  })
-  // bot-version / package-version / version lines that carry a bot version.
-  next = next.replace(/((?:bot-version|package-version|bot_version|package_version)\s*:\s*)v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?/g, (_m, p1) => {
-    count++
-    return p1 + target
-  })
-  // Generic "version: vX.Y.Z" only when line mentions bot/opencode-github.
-  next = next.replace(/^(.*opencode-github-bot.*\bversion\b\s*[:=]\s*)v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?/gm, (_m, p1) => {
-    count++
-    return p1 + target
-  })
-  return { next, count }
+  return { next: final, count }
 }
 
 export interface UpgradeResult {
@@ -458,20 +452,9 @@ export async function runUpgrade(optionsOrCwd?: any, versionArg?: string): Promi
   const changedFiles: string[] = []
   const fileCounts: Array<{ path: string; count: number }> = []
   let total = 0
-  const beforeVersions = new Set<string>()
-  // First pass: collect old version tokens for validation.
-  for (const rel of files) {
-    const full = join(cwd, rel)
-    let buf: Buffer
-    try { buf = readFileSync(full) as unknown as Buffer } catch { continue }
-    if (!isTextFile(buf)) continue
-    const text = buf.toString("utf8")
-    const matches = text.match(/(?:opencode-github-bot|bot-version|package-version|link-seek\/opencode-github-bot)[^\n]*v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?/g) || []
-    for (const m of matches) {
-      const v = m.match(/v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?/)
-      if (v) beforeVersions.add(v[0])
-    }
-  }
+  // Project first, write second, validate projections (never stale disk):
+  // a dry run validates exactly what a real run would write.
+  const projected = new Map<string, string>()
   for (const rel of files) {
     const full = join(cwd, rel)
     let buf: Buffer
@@ -483,20 +466,35 @@ export async function runUpgrade(optionsOrCwd?: any, versionArg?: string): Promi
       changedFiles.push(rel)
       fileCounts.push({ path: rel, count })
       total += count
-      if (write && !dryRun) {
-        try { writeFileSync(full, next, "utf8") } catch { /* ignore */ }
+      projected.set(rel, next)
+    }
+  }
+  if (write && !dryRun) {
+    for (const [rel, next] of projected) {
+      try {
+        writeFileSync(join(cwd, rel), next, "utf8")
+      } catch (e) {
+        // Fail loudly: a half-written upgrade must never report success.
+        throw new Error(`upgrade write failed for ${rel}: ${String((e as Error)?.message ?? e).slice(0, 160)}`)
       }
     }
   }
-  // Validation: ensure no old bot version references remain.
+  // Validation: ensure no old bot version references remain in the
+  // projected content (what would be / was written), not stale disk bytes.
   const remaining: string[] = []
   if (write || dryRun) {
     for (const rel of files) {
       const full = join(cwd, rel)
-      let buf: Buffer
-      try { buf = readFileSync(full) as unknown as Buffer } catch { continue }
-      if (!isTextFile(buf)) continue
-      const text = buf.toString("utf8")
+      let text: string | null = null
+      if (projected.has(rel)) {
+        text = projected.get(rel)!
+      } else {
+        try {
+          const buf = readFileSync(full) as unknown as Buffer
+          if (!isTextFile(buf)) continue
+          text = buf.toString("utf8")
+        } catch { continue }
+      }
       // Look for bot-related version references that are not the target.
       const re = /(opencode-github-bot|bot-version|package-version|link-seek\/opencode-github-bot)[^\n]*?(v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?)/g
       let m: RegExpExecArray | null
