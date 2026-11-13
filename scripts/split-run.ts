@@ -371,11 +371,12 @@ async function listComments(repo: string, n: number, token: string, why: string)
 /* Locked repo decisions for the planner: resolved relative to THIS script
  * (scripts/ -> ../docs/DECISIONS.md), so it works no matter where the
  * agent checks out. Best-effort: empty string when unreadable. */
-async function loadDecisions(cap = 4000): Promise<string> {
+export async function loadDecisions(cap = 4000): Promise<string> {
   try {
     const fs = await import("node:fs")
     const path = await import("node:path")
-    const here = path.dirname(new URL(import.meta.url).pathname)
+    const { fileURLToPath } = await import("node:url")
+    const here = path.dirname(fileURLToPath(import.meta.url))
     const raw = fs.readFileSync(path.join(here, "..", "docs", "DECISIONS.md"), "utf8")
     return raw.slice(0, cap)
   } catch {
