@@ -58,7 +58,7 @@ Upgrading: `npx opencode-github-bot init upgrade vX.Y.Z` (rewrites every version
 npx opencode-github-bot init
 ```
 
-Detects repo type, writes `.github/workflows/opencode.yml`, and lists any missing secrets/vars (`AGENT_GITHUB_TOKEN`, `OPENCODE_API_KEY`, `OPENCODE_MODEL`) instead of skipping them.
+Detects repo type, writes `.github/workflows/opencode.yml`, lists any missing secrets/vars (`AGENT_GITHUB_TOKEN`, `OPENCODE_API_KEY`, `OPENCODE_MODEL`) instead of skipping them, and reminds about `.github/repo-role.yml` (needed for intake triage; review/fix work without it).
 ## Plugin
 
 Add to `opencode.json(c)`:

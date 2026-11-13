@@ -114,6 +114,22 @@ describe("runInit", () => {
     expect(bad.error).toContain("timeoutMinutes")
     fs.rmSync(root, { recursive: true })
   })
+  test("notes remind about repo-role.yml without blocking ok", async () => {
+    const fs2 = await import("node:fs")
+    const os2 = await import("node:os")
+    const path2 = await import("node:path")
+    const root2 = fs2.mkdtempSync(path2.join(os2.tmpdir(), "init4-"))
+    const env2 = { AGENT_GITHUB_TOKEN: "x", OPENCODE_API_KEY: "y", OPENCODE_MODEL: "m" }
+    const without = await runInit({ cwd: root2, env: env2 })
+    expect(without.ok).toBe(true)
+    expect(without.notes.join("\n")).toContain("repo-role.yml")
+    fs2.mkdirSync(path2.join(root2, ".github"), { recursive: true })
+    fs2.writeFileSync(path2.join(root2, ".github", "repo-role.yml"), "owns: everything\n")
+    const withFile = await runInit({ cwd: root2, env: env2 })
+    expect(withFile.ok).toBe(true)
+    expect(withFile.notes).toEqual([])
+    fs2.rmSync(root2, { recursive: true })
+  })
   test("upgrade single-pass counts each ref once, dry-run validates projections", async () => {
     const fs = await import("node:fs")
     const os = await import("node:os")

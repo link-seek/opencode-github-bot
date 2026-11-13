@@ -16,6 +16,10 @@ export const REQUIRED_SECRETS = ["AGENT_GITHUB_TOKEN", "OPENCODE_API_KEY"] as co
 export const REQUIRED_VARS = ["OPENCODE_MODEL"] as const
 export const OPTIONAL_SECRETS = ["OPENCODE_API_KEY_BULK"] as const
 export const OPTIONAL_VARS = ["JEV_MODEL"] as const
+// Intake triage reads this for routing; review/fix work without it.
+// Missing file is a non-blocking reminder (notes, not missing) so
+// review-only repos still report OK.
+export const RECOMMENDED_FILES = [".github/repo-role.yml"] as const
 export const NPM_PACKAGE = "opencode-github-bot"
 // Deprecated: cross-repo reusable workflow route is no longer used. Kept (empty)
 // only for backward-compatible imports.
@@ -91,6 +95,17 @@ export function detectProjectType(root?: string): RepoType {
 
 export function detectType(root?: string): RepoType {
   return detectRepoType(root)
+}
+
+/** Files that are recommended but not required (intake-only). Never blocks OK. */
+export function checkRecommendedFiles(cwd: string = process.cwd()): string[] {
+  const notes: string[] = []
+  for (const f of RECOMMENDED_FILES) {
+    if (!existsSync(join(cwd, f))) {
+      notes.push(`file ${f} (needed for intake triage, review/fix work without it)`)
+    }
+  }
+  return notes
 }
 
 export function requiredConfig() {
@@ -309,6 +324,7 @@ export interface InitResult {
   content: string
   written: boolean
   missing: string[]
+  notes: string[]
   ok: boolean
   error?: string
 }
@@ -331,9 +347,10 @@ export async function runInit(options: InitOptions = {}): Promise<InitResult> {
   } catch (e) {
     // Generation-time validation (mode/model/version/timeoutMinutes):
     // return InitResult.error instead of rejecting, so --json exits 1 with machine-readable error.
-    return { repoType, workflowPath, content: "", written: false, missing: listMissing(options.env), ok: false, error: String((e as Error)?.message ?? e).slice(0, 200) }
+    return { repoType, workflowPath, content: "", written: false, missing: listMissing(options.env), notes: checkRecommendedFiles(cwd), ok: false, error: String((e as Error)?.message ?? e).slice(0, 200) }
   }
   const missing = listMissing(options.env)
+  const notes = checkRecommendedFiles(cwd)
   const full = resolve(cwd, workflowPath)
   const rel = relative(cwd, full)
   if (rel === "" || rel === ".." || rel.startsWith(`..${sep}`)) {
@@ -351,9 +368,9 @@ export async function runInit(options: InitOptions = {}): Promise<InitResult> {
       }
     }
   } catch (e) {
-    return { repoType, workflowPath, content, written: false, missing, ok: false, error: String((e as Error)?.message ?? e).slice(0, 200) }
+    return { repoType, workflowPath, content, written: false, missing, notes, ok: false, error: String((e as Error)?.message ?? e).slice(0, 200) }
   }
-  return { repoType, workflowPath, content, written, missing, ok: missing.length === 0 }
+  return { repoType, workflowPath, content, written, missing, notes, ok: missing.length === 0 }
 }
 
 export async function scaffold(options: InitOptions = {}): Promise<InitResult> {
