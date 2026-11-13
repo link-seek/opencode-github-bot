@@ -25,8 +25,15 @@ async function main() {
   if (cmd === "init") {
     const write = !args.includes("--dry-run")
     const force = args.includes("--force")
+    const json = args.includes("--json")
     const cwd = process.cwd()
     const res = await runInit({ cwd, write, force })
+    if (json) {
+      process.stdout.write(JSON.stringify(res) + "\n")
+      if (res.error) process.exitCode = 1
+      else if (res.missing.length > 0) process.exitCode = 1
+      return
+    }
     process.stdout.write(res.content)
     if (res.error) {
       console.error(`\nWrite failed: ${res.error}`)
@@ -70,7 +77,7 @@ async function main() {
     console.log("OK")
     return
   }
-  console.log("Usage: opencode-github-bot init [--dry-run] [--force]")
+  console.log("Usage: opencode-github-bot init [--dry-run] [--force] [--json]")
   console.log("       opencode-github-bot init upgrade <version> [--dry-run]")
   console.log("       opencode-github-bot upgrade <version> [--dry-run]")
   console.log("       opencode-github-bot check")
