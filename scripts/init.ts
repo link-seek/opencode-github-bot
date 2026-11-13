@@ -52,6 +52,7 @@ export interface InitOptions {
   mode?: string
   model?: string
   version?: string
+  timeoutMinutes?: number
   workflowPath?: string
   write?: boolean
   force?: boolean
@@ -220,6 +221,10 @@ export function generateWorkflow(options: InitOptions | string | undefined = {})
     throw new Error(`unsafe model: ${JSON.stringify(model).slice(0, 80)}`)
   }
   const version = safeToken(opts.version || DEFAULT_VERSION, "version")
+  const timeoutMinutes = opts.timeoutMinutes ?? 20
+  if (!Number.isInteger(timeoutMinutes) || timeoutMinutes < 1 || timeoutMinutes > 360) {
+    throw new Error(`unsafe timeoutMinutes: ${JSON.stringify(opts.timeoutMinutes)}`)
+  }
   const modelLine = `          model: ${model}`
   // Self-contained: inline checkout + npm install + local composite action.
   // No cross-repo `uses:` of any external workflow.
@@ -239,7 +244,7 @@ permissions:
 jobs:
   bot:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: ${timeoutMinutes}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
