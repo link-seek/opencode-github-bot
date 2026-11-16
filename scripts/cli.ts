@@ -44,6 +44,7 @@ async function main() {
       console.error("\nMissing required configuration:")
       for (const m of res.missing) console.error("  - " + m)
       console.error("\nAdd them in repo/org Settings -> Secrets and variables -> Actions.")
+      console.error("See docs/setup.md for the 5-minute guide (incl. private-repo caveat).")
       process.exitCode = 1
     } else {
       console.error("\nBot configuration OK.")
