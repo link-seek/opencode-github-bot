@@ -192,3 +192,4 @@ Empty default value cells mean an empty string (or no default for required input
 ## Status
 
 v0.3.0: + pm-intake (Jev 6-question triage, docs-aligned, strict CF child tokens). Trusted Publishing (OIDC) enabled.
+<!-- probe-chain verification -->
