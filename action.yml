@@ -276,19 +276,30 @@ runs:
         # process.exit(), skipping beforeExit handlers).
         TASK_STARTED_AT="$(date +%s)"
         TASK_EXIT=0
+        # Timeout circuit breaker (#123): the CLI retries 429 internally with a
+        # long backoff (15min observed), so without a timeout the shell-level
+        # fallback below would never fire before the job timeout. Wrap every
+        # agent run in `timeout 8m`; a timeout (exit 124) with rate-limit
+        # evidence in the log triggers the same-key fallback once.
+        AGENT_TIMEOUT="8m"
         run_agent() {
           if [ -n "${REVIEW_PROMPT}" ]; then
-            opencode run --agent github-bot --model "$1" "Mode: ${MODE}. Repository: ${REPOSITORY}. PR number: ${PR_NUMBER}. Issue number: ${ISSUE_NUMBER}. Read .opencode/pr-context.md for full context. Review prompt: ${REVIEW_PROMPT}" 2>&1 | tee /tmp/opencode-run.log
+            timeout "$AGENT_TIMEOUT" opencode run --agent github-bot --model "$1" "Mode: ${MODE}. Repository: ${REPOSITORY}. PR number: ${PR_NUMBER}. Issue number: ${ISSUE_NUMBER}. Read .opencode/pr-context.md for full context. Review prompt: ${REVIEW_PROMPT}" 2>&1 | tee /tmp/opencode-run.log
           else
-            opencode run --agent github-bot --model "$1" "Mode: ${MODE}. Repository: ${REPOSITORY}. PR number: ${PR_NUMBER}. Issue number: ${ISSUE_NUMBER}. If mode is review, read .opencode/pr-context.md and use the pr-review skill. If mode is fix-issue, read .opencode/issue-context.md and use the issue-fix skill. If mode is split-plan, read .opencode/split-context.md and use the pm-split skill. Write pm-split-plan.json in the current directory. Do NOT comment or create issues." 2>&1 | tee /tmp/opencode-run.log
+            timeout "$AGENT_TIMEOUT" opencode run --agent github-bot --model "$1" "Mode: ${MODE}. Repository: ${REPOSITORY}. PR number: ${PR_NUMBER}. Issue number: ${ISSUE_NUMBER}. If mode is review, read .opencode/pr-context.md and use the pr-review skill. If mode is fix-issue, read .opencode/issue-context.md and use the issue-fix skill. If mode is split-plan, read .opencode/split-context.md and use the pm-split skill. Write pm-split-plan.json in the current directory. Do NOT comment or create issues." 2>&1 | tee /tmp/opencode-run.log
           fi
           return "${PIPESTATUS[0]}"
         }
         run_agent "${CLI_MODEL}" || TASK_EXIT=$?
         # Lane-internal model fallback: primary 429/quota -> retry the backup
         # model on the SAME key. No lane switch for long tasks (bulk isolation).
+        # Fires on CLI failure AND on timeout (exit 124) with rate-limit evidence.
         if [ "$TASK_EXIT" -ne 0 ] && [ -n "$CLI_FALLBACK" ] && grep -qiE '429|rate.?limit|quota (exceeded|exhausted)|too many requests' /tmp/opencode-run.log 2>/dev/null; then
-          echo "opencode primary model ${CLI_MODEL} rate-limited, switching to fallback model ${CLI_FALLBACK} on same key"
+          if [ "$TASK_EXIT" -eq 124 ]; then
+            echo "opencode primary model ${CLI_MODEL} timed out after ${AGENT_TIMEOUT} with rate-limit evidence, switching to fallback model ${CLI_FALLBACK} on same key"
+          else
+            echo "opencode primary model ${CLI_MODEL} rate-limited (exit ${TASK_EXIT}), switching to fallback model ${CLI_FALLBACK} on same key"
+          fi
           TASK_EXIT=0
           run_agent "${CLI_FALLBACK}" || TASK_EXIT=$?
         fi
