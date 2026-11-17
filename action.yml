@@ -293,7 +293,7 @@ runs:
           esac
           curl -s -o "$PROBE_BODY" -w "%{http_code}" -m 20 -X POST "$1/chat/completions" \
             "${PROBE_HEADERS[@]}" \
-            -d "{\"model\":\"$2\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}],\"max_tokens\":1,\"temperature\":0}" 2>/dev/null || echo "000"
+            -d "{\"model\":\"$2\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}],\"temperature\":0}" 2>/dev/null || echo "000"
         }
         run_agent() {
           if [ -n "${REVIEW_PROMPT}" ]; then
