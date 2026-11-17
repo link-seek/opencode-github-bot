@@ -281,17 +281,17 @@ runs:
         # 429/quota on primary -> start on fallback directly. Mid-run
         # exhaustion is rare (1-2x/day) -> left as-is.
         MODEL_PARTS="$(python3 -c '
-import json,sys
-raw = sys.argv[1]
-o = json.loads(raw) if raw.strip().startswith("{") else {}
-cli = (o.get("cli") or "").strip()
-base = (o.get("apiBase") or "").strip()
-api = (o.get("apiId") or "").strip() or (cli.rsplit("/", 1)[-1] if "/" in cli else cli)
-fcli = (o.get("fallback_cli") or "").strip()
-fbase = (o.get("fallback_apiBase") or "").strip()
-fapi = (o.get("fallback_apiId") or "").strip() or (fcli.rsplit("/", 1)[-1] if "/" in fcli else fcli)
-print(f"{base} {api} {fbase} {fapi}")
-' "$MODEL")"
+        import json,sys
+        raw = sys.argv[1]
+        o = json.loads(raw) if raw.strip().startswith("{") else {}
+        cli = (o.get("cli") or "").strip()
+        base = (o.get("apiBase") or "").strip()
+        api = (o.get("apiId") or "").strip() or (cli.rsplit("/", 1)[-1] if "/" in cli else cli)
+        fcli = (o.get("fallback_cli") or "").strip()
+        fbase = (o.get("fallback_apiBase") or "").strip()
+        fapi = (o.get("fallback_apiId") or "").strip() or (fcli.rsplit("/", 1)[-1] if "/" in fcli else fcli)
+        print(f"{base} {api} {fbase} {fapi}")
+        ' "$MODEL")"
         read -r API_BASE API_ID FB_BASE FB_ID <<<"$MODEL_PARTS"
         probe_code() { # $1=apiBase $2=apiId -> prints http code, body in $PROBE_BODY
           PROBE_BODY="$(mktemp)"
