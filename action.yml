@@ -276,32 +276,55 @@ runs:
         # process.exit(), skipping beforeExit handlers).
         TASK_STARTED_AT="$(date +%s)"
         TASK_EXIT=0
-        # Timeout circuit breaker (#123): the CLI retries 429 internally with a
-        # long backoff (15min observed), so without a timeout the shell-level
-        # fallback below would never fire before the job timeout. Wrap every
-        # agent run in `timeout 8m`; a timeout (exit 124) with rate-limit
-        # evidence in the log triggers the same-key fallback once.
-        AGENT_TIMEOUT="8m"
+        # Pre-flight probe (#123 final): pick a runnable model BEFORE the task.
+        # Same key, same lane, no timeout guard. One minimal chat call (~1s):
+        # 429/quota on primary -> start on fallback directly. Mid-run
+        # exhaustion is rare (1-2x/day) -> left as-is.
+        MODEL_PARTS="$(python3 -c '
+import json,sys
+raw = sys.argv[1]
+o = json.loads(raw) if raw.strip().startswith("{") else {}
+cli = (o.get("cli") or "").strip()
+base = (o.get("apiBase") or "").strip()
+api = (o.get("apiId") or "").strip() or (cli.rsplit("/", 1)[-1] if "/" in cli else cli)
+fcli = (o.get("fallback_cli") or "").strip()
+fbase = (o.get("fallback_apiBase") or "").strip()
+fapi = (o.get("fallback_apiId") or "").strip() or (fcli.rsplit("/", 1)[-1] if "/" in fcli else fcli)
+print(f"{base} {api} {fbase} {fapi}")
+' "$MODEL")"
+        read -r API_BASE API_ID FB_BASE FB_ID <<<"$MODEL_PARTS"
+        probe_code() { # $1=apiBase $2=apiId -> prints http code, body in $PROBE_BODY
+          PROBE_BODY="$(mktemp)"
+          curl -s -o "$PROBE_BODY" -w "%{http_code}" -m 20 -X POST "$1/chat/completions" \
+            -H "Authorization: Bearer $AGENT_KEY" -H "Content-Type: application/json" \
+            -d "{\"model\":\"$2\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}],\"max_tokens\":1}" 2>/dev/null || echo "000"
+        }
         run_agent() {
           if [ -n "${REVIEW_PROMPT}" ]; then
-            timeout "$AGENT_TIMEOUT" opencode run --agent github-bot --model "$1" "Mode: ${MODE}. Repository: ${REPOSITORY}. PR number: ${PR_NUMBER}. Issue number: ${ISSUE_NUMBER}. Read .opencode/pr-context.md for full context. Review prompt: ${REVIEW_PROMPT}" 2>&1 | tee /tmp/opencode-run.log
+            opencode run --agent github-bot --model "$1" "Mode: ${MODE}. Repository: ${REPOSITORY}. PR number: ${PR_NUMBER}. Issue number: ${ISSUE_NUMBER}. Read .opencode/pr-context.md for full context. Review prompt: ${REVIEW_PROMPT}" 2>&1 | tee /tmp/opencode-run.log
           else
-            timeout "$AGENT_TIMEOUT" opencode run --agent github-bot --model "$1" "Mode: ${MODE}. Repository: ${REPOSITORY}. PR number: ${PR_NUMBER}. Issue number: ${ISSUE_NUMBER}. If mode is review, read .opencode/pr-context.md and use the pr-review skill. If mode is fix-issue, read .opencode/issue-context.md and use the issue-fix skill. If mode is split-plan, read .opencode/split-context.md and use the pm-split skill. Write pm-split-plan.json in the current directory. Do NOT comment or create issues." 2>&1 | tee /tmp/opencode-run.log
+            opencode run --agent github-bot --model "$1" "Mode: ${MODE}. Repository: ${REPOSITORY}. PR number: ${PR_NUMBER}. Issue number: ${ISSUE_NUMBER}. If mode is review, read .opencode/pr-context.md and use the pr-review skill. If mode is fix-issue, read .opencode/issue-context.md and use the issue-fix skill. If mode is split-plan, read .opencode/split-context.md and use the pm-split skill. Write pm-split-plan.json in the current directory. Do NOT comment or create issues." 2>&1 | tee /tmp/opencode-run.log
           fi
           return "${PIPESTATUS[0]}"
         }
-        run_agent "${CLI_MODEL}" || TASK_EXIT=$?
-        # Lane-internal model fallback: primary 429/quota -> retry the backup
-        # model on the SAME key. No lane switch for long tasks (bulk isolation).
-        # Fires on CLI failure AND on timeout (exit 124) with rate-limit evidence.
-        if [ "$TASK_EXIT" -ne 0 ] && [ -n "$CLI_FALLBACK" ] && grep -qiE '429|rate.?limit|quota (exceeded|exhausted)|too many requests' /tmp/opencode-run.log 2>/dev/null; then
-          if [ "$TASK_EXIT" -eq 124 ]; then
-            echo "opencode primary model ${CLI_MODEL} timed out after ${AGENT_TIMEOUT} with rate-limit evidence, switching to fallback model ${CLI_FALLBACK} on same key"
+        FIRST="$CLI_MODEL"; SECOND="$CLI_FALLBACK"
+        if [ -n "$CLI_FALLBACK" ] && [ -n "$API_BASE" ] && [ -n "$API_ID" ] && [ -n "$AGENT_KEY" ]; then
+          PCODE="$(probe_code "$API_BASE" "$API_ID")"
+          if [ "$PCODE" = "429" ] || grep -qiE 'quota (exceeded|exhausted)|rate.?limit|too many requests' "$PROBE_BODY" 2>/dev/null; then
+            echo "probe: primary ${CLI_MODEL} limited (http $PCODE), starting on fallback ${CLI_FALLBACK}"
+            FIRST="$CLI_FALLBACK"; SECOND="$CLI_MODEL"
           else
-            echo "opencode primary model ${CLI_MODEL} rate-limited (exit ${TASK_EXIT}), switching to fallback model ${CLI_FALLBACK} on same key"
+            echo "probe: primary ${CLI_MODEL} ok (http $PCODE), starting on primary"
           fi
+          rm -f "$PROBE_BODY"
+        fi
+        run_agent "$FIRST" || TASK_EXIT=$?
+        # Failure fallback (#121 retained): FIRST failed with 429 evidence ->
+        # try SECOND once, same key, no lane switch.
+        if [ "$TASK_EXIT" -ne 0 ] && [ -n "$SECOND" ] && [ "$SECOND" != "$FIRST" ] && grep -qiE '429|rate.?limit|quota (exceeded|exhausted)|too many requests' /tmp/opencode-run.log 2>/dev/null; then
+          echo "opencode ${FIRST} rate-limited (exit ${TASK_EXIT}), switching to ${SECOND} on same key"
           TASK_EXIT=0
-          run_agent "${CLI_FALLBACK}" || TASK_EXIT=$?
+          run_agent "$SECOND" || TASK_EXIT=$?
         fi
         export TASK_STARTED_AT TASK_EXIT_CODE="$TASK_EXIT"
         if ! command -v bun >/dev/null 2>&1; then curl -fsSL "${BUN_INSTALL_URL:-https://bun.sh/install}" | bash; export PATH="$HOME/.bun/bin:$PATH"; fi
