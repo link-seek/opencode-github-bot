@@ -286,7 +286,7 @@ runs:
           # Shape mirrors scripts/llm-judge.ts callJudge (known-good): go
           # subscription endpoints require x-opencode-session, hence the 400
           # seen without it. max_tokens:1 caps quota cost of the probe.
-          PROBE_BODY="$(mktemp)"
+          PROBE_BODY="/tmp/opencode-probe-body.$$"
           PROBE_HEADERS=(-H "Authorization: Bearer $AGENT_KEY" -H "Content-Type: application/json" -H "User-Agent: opencode-github-bot/probe")
           case "$1" in
             */inference/go/*) PROBE_HEADERS+=(-H "x-opencode-session: probe-${GITHUB_RUN_ID:-local}-$TASK_STARTED_AT") ;;
@@ -306,7 +306,7 @@ runs:
         FIRST="$CLI_MODEL"; SECOND="$CLI_FALLBACK"
         if [ -n "$CLI_FALLBACK" ] && [ -n "$API_BASE" ] && [ -n "$API_ID" ] && [ -n "$AGENT_KEY" ]; then
           PCODE="$(probe_code "$API_BASE" "$API_ID")"
-          PROBE_MSG=$(head -c 200 "$PROBE_BODY" 2>/dev/null | tr '\n' ' ')
+          PROBE_MSG=$(head -c 200 "$PROBE_BODY" 2>/dev/null | tr '\n' ' ' || true)
           echo "probe: http $PCODE body: $PROBE_MSG"
           if [ "$PCODE" = "429" ] || grep -qiE 'quota (exceeded|exhausted)|rate.?limit|too many requests' "$PROBE_BODY" 2>/dev/null; then
             echo "probe: primary ${CLI_MODEL} limited (http $PCODE), starting on fallback ${CLI_FALLBACK}"
