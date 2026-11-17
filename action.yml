@@ -280,18 +280,7 @@ runs:
         # Same key, same lane, no timeout guard. One minimal chat call (~1s):
         # 429/quota on primary -> start on fallback directly. Mid-run
         # exhaustion is rare (1-2x/day) -> left as-is.
-        MODEL_PARTS="$(python3 -c '
-        import json,sys
-        raw = sys.argv[1]
-        o = json.loads(raw) if raw.strip().startswith("{") else {}
-        cli = (o.get("cli") or "").strip()
-        base = (o.get("apiBase") or "").strip()
-        api = (o.get("apiId") or "").strip() or (cli.rsplit("/", 1)[-1] if "/" in cli else cli)
-        fcli = (o.get("fallback_cli") or "").strip()
-        fbase = (o.get("fallback_apiBase") or "").strip()
-        fapi = (o.get("fallback_apiId") or "").strip() or (fcli.rsplit("/", 1)[-1] if "/" in fcli else fcli)
-        print(f"{base} {api} {fbase} {fapi}")
-        ' "$MODEL")"
+        MODEL_PARTS="$(python3 -c 'import json,sys; o=json.loads(sys.argv[1]) if sys.argv[1].strip().startswith("{") else {}; g=lambda k:(o.get(k) or "").strip(); cli=g("cli"); base=g("apiBase"); api=g("apiId") or (cli.rsplit("/",1)[-1] if "/" in cli else cli); fcli=g("fallback_cli"); fbase=g("fallback_apiBase"); fapi=g("fallback_apiId") or (fcli.rsplit("/",1)[-1] if "/" in fcli else fcli); print(f"{base} {api} {fbase} {fapi}")' "$MODEL")"
         read -r API_BASE API_ID FB_BASE FB_ID <<<"$MODEL_PARTS"
         probe_code() { # $1=apiBase $2=apiId -> prints http code, body in $PROBE_BODY
           # Shape mirrors scripts/llm-judge.ts callJudge (known-good): go
