@@ -33,8 +33,11 @@ jobs:
         run: |
           export PATH="$HOME/.opencode/bin:$PATH"
           # Unified variable (JSON {"cli","apiBase"}, legacy formats accepted).
+          # Dual-value (#120): optional fallback_cli adds a backup model on the
+          # same key (no fallback fields = single model, old behavior).
           # Value passes through env (never interpolated verbatim into the command).
           CLI_MODEL="$(python3 scripts/model-cli.py "$OPENCODE_MODEL")"
+          CLI_FALLBACK="$(python3 scripts/model-cli.py "$OPENCODE_MODEL" --fallback 2>/dev/null || true)"
           # Task routing (分流): long agent runs go to the bulk lane (strict
           # isolation protects the fast lane's guaranteed capacity); without
           # bulk configured, they fall back to the fast lane.
@@ -47,6 +50,12 @@ jobs:
           TASK_STARTED_AT="$(date +%s)"
           TASK_EXIT=0
           opencode run --agent github-bot --model "$CLI_MODEL" "What is 2+2? Reply with just the number." | tee /tmp/smoke.log || TASK_EXIT=$?
+          # Lane-internal model fallback: primary 429/quota -> backup model, same key.
+          if [ "$TASK_EXIT" -ne 0 ] && [ -n "$CLI_FALLBACK" ] && grep -qiE '429|rate.?limit|quota (exceeded|exhausted)|too many requests' /tmp/smoke.log 2>/dev/null; then
+            echo "smoke primary model ${CLI_MODEL} rate-limited, switching to fallback model ${CLI_FALLBACK} on same key"
+            TASK_EXIT=0
+            opencode run --agent github-bot --model "$CLI_FALLBACK" "What is 2+2? Reply with just the number." | tee /tmp/smoke.log || TASK_EXIT=$?
+          fi
           grep -q "4" /tmp/smoke.log || { echo "Smoke test failed"; cat /tmp/smoke.log; TASK_EXIT=1; }
           export TASK_STARTED_AT TASK_EXIT_CODE="$TASK_EXIT" MODE="smoke" REPOSITORY="${{ github.repository }}"
           if command -v bun >/dev/null 2>&1; then bun scripts/report-task.ts || true; fi

@@ -121,4 +121,39 @@ describe("llm-judge contract", () => {
     })) as unknown as typeof fetch
     await expect(llmJudge("d", "t", "b", [], fake, { LLM_API_KEY: "x", OPENCODE_MODEL: "m" } as any)).rejects.toThrow("llm-judge")
   })
+  test("dual-value: primary 429 -> fallback model on SAME key", async () => {
+    const { llmJudge } = await import("../scripts/llm-judge")
+    const seen: Array<{ model: string; key: string }> = []
+    const fake = (async (_u: any, init: any) => {
+      const body = JSON.parse(init.body)
+      seen.push({ model: body.model, key: String(init.headers.Authorization) })
+      if (seen.length === 1) return { ok: false, status: 429, text: async () => "quota exceeded" }
+      return {
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: '{"repo_fit":0.5,"is_clear":0.5,"type":"bug","size":0.5,"priority":0.5,"duplicate":0}' } }],
+          usage: {},
+        }),
+      }
+    }) as unknown as typeof fetch
+    const r = await llmJudge("d", "t", "b", [], fake, {
+      LLM_API_KEY: "k-fast",
+      OPENCODE_MODEL: '{"cli":"p/beam-free","apiBase":"https://a.invalid","fallback_cli":"p/muse-spark","fallback_apiBase":"https://b.invalid"}',
+    } as any)
+    expect(r.type).toBe("bug")
+    expect(seen.map((s) => s.model)).toEqual(["beam-free", "muse-spark"])
+    expect(seen.every((s) => s.key === "Bearer k-fast")).toBe(true)
+  })
+  test("dual-value: no fallback fields = single attempt (old behavior)", async () => {
+    const { llmJudge } = await import("../scripts/llm-judge")
+    let calls = 0
+    const fake = (async () => {
+      calls++
+      return { ok: false, status: 429, text: async () => "quota exceeded" }
+    }) as unknown as typeof fetch
+    await expect(
+      llmJudge("d", "t", "b", [], fake, { LLM_API_KEY: "x", OPENCODE_MODEL: "beam-free" } as any),
+    ).rejects.toThrow("llm-judge")
+    expect(calls).toBe(1)
+  })
 })

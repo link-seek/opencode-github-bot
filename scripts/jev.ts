@@ -5,11 +5,13 @@
  *  - score confidences gate automation (low confidence -> human);
  *  - duplicates use one Noul per candidate (same_as_<n>), giving attribution.
  * Single model variable, JSON: {"cli":"...","apiBase":"..."} (see model-target.ts).
+ * Dual-value (#120): optional fallback_cli/fallback_apiBase add a backup model
+ * tried on the SAME key after a 429/quota on the primary (then bulk lane).
  *  - CLI uses `cli` verbatim. API uses `apiBase` + id (`apiId` or after last "/").
  * Opencode only. Legacy space-separated/bare values still parse.
  * Key: OPENCODE_API_KEY else inputs.llm-api-key. No key -> null (fail-closed).
  */
-import { parseModelVar } from "./model-target"
+import { modelTargets, parseModelVar } from "./model-target"
 import { isRateLimited, keysFor } from "./keys"
 import { withSpan } from "./trace"
 export const DEFAULT_JEV_MODEL = "jev-1.13-free"
@@ -113,12 +115,31 @@ export interface JevEndpoint {
   /** Failover key (bulk lane) for short tasks. Empty when failover is not configured. */
   fallbackKey?: string
   model?: string
+  /** Fallback model on the SAME key (lane-internal, #120). Absent = no fallback. */
+  fallbackModel?: string
+  /** Endpoint for the fallback model (defaults to `url` when empty). */
+  fallbackUrl?: string
 }
 
-export function resolveJevTarget(raw: string): { url: string; model: string } | null {
+export function resolveJevTarget(raw: string): { url: string; model: string; fallbackUrl?: string; fallbackModel?: string } | null {
   const v = parseModelVar(raw)
   if (!v.apiId) return null
-  return { url: v.apiBase || DEFAULT_JEV_URL, model: v.apiId }
+  const targets = modelTargets(v)
+  const primary = targets[0]
+  const out: { url: string; model: string; fallbackUrl?: string; fallbackModel?: string } = {
+    url: primary.apiBase || DEFAULT_JEV_URL,
+    model: primary.apiId,
+  }
+  const fb = targets[1]
+  if (fb) {
+    const fbUrl = fb.apiBase || primary.apiBase || DEFAULT_JEV_URL
+    // Same-model fallback is a no-op: treat as no fallback to keep logs honest.
+    if (fb.apiId !== primary.apiId || fbUrl !== out.url) {
+      out.fallbackModel = fb.apiId
+      if (fb.apiBase) out.fallbackUrl = fb.apiBase
+    }
+  }
+  return out
 }
 
 export function jevEndpointFromEnv(env: NodeJS.ProcessEnv = process.env): JevEndpoint | null {
@@ -129,7 +150,12 @@ export function jevEndpointFromEnv(env: NodeJS.ProcessEnv = process.env): JevEnd
   const { url, model } = t
   const plan = keysFor(env, "short")
   if (!plan.primary) return null
-  return { url, model, key: plan.primary, fallbackKey: plan.fallback || undefined }
+  const ep: JevEndpoint = { url, model, key: plan.primary, fallbackKey: plan.fallback || undefined }
+  if (t.fallbackModel) {
+    ep.fallbackModel = t.fallbackModel
+    if (t.fallbackUrl) ep.fallbackUrl = t.fallbackUrl
+  }
+  return ep
 }
 
 function num(v: any, fb = 0): number {
@@ -138,8 +164,9 @@ function num(v: any, fb = 0): number {
 }
 
 /** Call Jev once. Returns null when no key (caller skips semantic triage).
- * Short-task routing: on rate-limit the call is retried once on the
- * bulk lane. A 10-minute task must never wait hours for a window. */
+ * Short-task routing: on rate-limit the call first falls back to the backup
+ * MODEL on the same key (#120), then to the bulk lane (same model order).
+ * A 10-minute task must never wait hours for a window. */
 export async function jevIntake(
   state: IntakeState,
   candidates: CandidateDoc[],
@@ -160,8 +187,8 @@ export async function jevIntake(
   return await withSpan("jev.intake", attrs, async () => {
   // opencode.ai sits behind Cloudflare, which bans default script UAs (403/1010).
   // Send a browser-grade UA like the verified probe does.
-  const callJev = (key: string) =>
-    fetchFn(endpoint.url, {
+  const callJev = (key: string, url: string, m: string) =>
+    fetchFn(url, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${key}`,
@@ -169,28 +196,57 @@ export async function jevIntake(
         "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36",
       },
       body: JSON.stringify({
-        model,
+        model: m,
         state: buildJevState(state),
         questions: buildJevQuestions(state.role, candidates),
       }),
     })
-  let res: any
-  try {
-    res = await callJev(endpoint.key)
-    if (!res.ok) {
-      const t = await res.text().catch(() => "")
-      throw new Error(`jev: ${res.status} ${t.slice(0, 300)}`)
-    }
-  } catch (e) {
-    if (!endpoint.fallbackKey || !isRateLimited(e)) throw e
-    console.log(`jev rate-limited on fast lane, failing over to bulk lane`)
-    const retry = await callJev(endpoint.fallbackKey)
-    if (!retry.ok) {
-      const t = await retry.text().catch(() => "")
-      throw new Error(`jev: ${retry.status} ${t.slice(0, 300)}`)
-    }
-    res = retry
+  // Lane-internal model order: primary, then fallback on the SAME key.
+  const models: Array<{ url: string; model: string; label: string }> = [
+    { url: endpoint.url, model, label: "primary" },
+  ]
+  if (endpoint.fallbackModel) {
+    models.push({
+      url: endpoint.fallbackUrl || endpoint.url,
+      model: endpoint.fallbackModel,
+      label: "fallback",
+    })
   }
+  const lanes: Array<{ key: string; label: string }> = [{ key: endpoint.key, label: "fast lane" }]
+  if (endpoint.fallbackKey) lanes.push({ key: endpoint.fallbackKey, label: "bulk lane" })
+  let res: any = null
+  let usedModel = model
+  let lastErr: unknown = null
+  for (let li = 0; li < lanes.length; li++) {
+    for (let mi = 0; mi < models.length; mi++) {
+      const lane = lanes[li]
+      const target = models[mi]
+      try {
+        const attempt = await callJev(lane.key, target.url, target.model)
+        if (!attempt.ok) {
+          const t = await attempt.text().catch(() => "")
+          throw new Error(`jev: ${attempt.status} ${t.slice(0, 300)}`)
+        }
+        res = attempt
+        usedModel = target.model
+        li = lanes.length // break outer
+        break
+      } catch (e) {
+        lastErr = e
+        if (!isRateLimited(e)) throw e
+        const hasModelNext = mi + 1 < models.length
+        const hasLaneNext = !hasModelNext && li + 1 < lanes.length
+        if (!hasModelNext && !hasLaneNext) throw e
+        if (hasModelNext) {
+          const fb = models[mi + 1]
+          console.log(`jev rate-limited on ${lane.label} (${target.model}), switching to fallback model ${fb.model} on same key`)
+        } else {
+          console.log(`jev rate-limited on ${lane.label}, failing over to bulk lane`)
+        }
+      }
+    }
+  }
+  if (!res) throw lastErr instanceof Error ? lastErr : new Error("jev: no response")
   const data = await res.json().catch(() => {
     throw new Error("jev: non-JSON 2xx response")
   }) as any
@@ -220,7 +276,7 @@ export async function jevIntake(
       size: num(a?.size?.confidence, 0),
       priority: num(a?.priority?.confidence, 0),
     },
-    model: data?.model || model,
+    model: data?.model || usedModel,
   }
   })
 }

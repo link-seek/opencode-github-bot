@@ -3,9 +3,11 @@
  * Talked to via any OpenAI-compatible endpoint. Model comes from ONE variable
  * (LLM_JUDGE_MODEL else OPENCODE_MODEL) in CLI form "provider/id"; API calls
  * split it via model-target.ts (bare id + provider base URL).
+ * Dual-value (#120): optional fallback_cli/fallback_apiBase add a backup model
+ * tried on the SAME key after a 429/quota on the primary (then bulk lane).
  * Only used by replay/eval, never in prod path.
  */
-import { parseModelVar } from "./model-target"
+import { modelTargets, parseModelVar } from "./model-target"
 import { isRateLimited, keysFor } from "./keys"
 import { withSpan } from "./trace"
 
@@ -51,55 +53,73 @@ export async function llmJudge(
   if (!rawModel) throw new Error("need LLM_JUDGE_MODEL or OPENCODE_MODEL");
   const v = parseModelVar(rawModel);
   // Single token (legacy) = bare API id, base from LLM_BASE_URL or gateway default.
-  const baseUrl = v.apiBase || (env.LLM_BASE_URL || "").trim() || "https://opencode.ai/inference/openai/v1";
+  const defaultBase = (env.LLM_BASE_URL || "").trim() || "https://opencode.ai/inference/openai/v1";
   if (!v.apiId) throw new Error(`empty model id in ${rawModel}`);
-  const model = v.apiId;
+  // Lane-internal model order (#120): primary, then fallback on the SAME key.
+  const targets = modelTargets(v).map((t) => ({
+    model: t.apiId,
+    baseUrl: t.apiBase || defaultBase,
+  }));
+  const model = targets[0].model;
   const plan = keysFor(env, "short");
   if (!plan.primary) throw new Error("need LLM_API_KEY or OPENCODE_API_KEY");
   const key = plan.primary;
   // Go subscription endpoints (/inference/go/...) require a session id header.
-  const headers: Record<string, string> = {
-    Authorization: `Bearer ${key}`,
-    "Content-Type": "application/json",
-    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36",
-  };
-  if (baseUrl.includes("/inference/go/")) {
-    const run = env.GITHUB_RUN_ID ? `gh-${env.GITHUB_RUN_ID}-${env.GITHUB_RUN_ATTEMPT || "0"}` : `local-${Date.now()}`;
-    headers["x-opencode-session"] = run;
-  }
+  // Computed per target: primary and fallback may use different bases.
+  const sessionRun = env.GITHUB_RUN_ID ? `gh-${env.GITHUB_RUN_ID}-${env.GITHUB_RUN_ATTEMPT || "0"}` : `local-${Date.now()}`;
   const state = [`NEW: ${title}\n${body.slice(0, 1500)}`,
     ...candidates.slice(0, 10).map((c) => `#${c.number}: ${c.title} — ${c.summary}`)].join("\n");
   const prompt = PROMPT.replace("__ROLE__", role).replace("__STATE__", state);
   return await withSpan("llm.judge", { "mode": "eval", "model.id": model }, async () => {
   const t0 = Date.now();
-  const callJudge = (k: string) =>
-    fetchFn(`${baseUrl}/chat/completions`, {
+  const callJudge = (k: string, url: string, m: string) => {
+    const reqHeaders: Record<string, string> = {
+      Authorization: `Bearer ${k}`,
+      "Content-Type": "application/json",
+      "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36",
+    };
+    if (url.includes("/inference/go/")) reqHeaders["x-opencode-session"] = sessionRun;
+    return fetchFn(`${url}/chat/completions`, {
       method: "POST",
-      headers: { ...headers, Authorization: `Bearer ${k}` },
+      headers: reqHeaders,
       body: JSON.stringify({
-        model,
+        model: m,
         messages: [{ role: "user", content: prompt }],
         temperature: 0,
         response_format: { type: "json_object" },
       }),
     });
-  let res: any;
-  try {
-    res = await callJudge(key);
-    if (!res.ok) {
-      const t = await res.text().catch(() => "");
-      throw new Error(`llm-judge: ${res.status} ${t.slice(0, 500)}`);
+  };
+  const laneKeys: Array<{ key: string; label: string }> = [{ key, label: "fast lane" }];
+  if (plan.fallback) laneKeys.push({ key: plan.fallback, label: "bulk lane" });
+  let res: any = null;
+  for (let li = 0; li < laneKeys.length; li++) {
+    for (let mi = 0; mi < targets.length; mi++) {
+      const lane = laneKeys[li];
+      const target = targets[mi];
+      try {
+        const attempt = await callJudge(lane.key, target.baseUrl, target.model);
+        if (!attempt.ok) {
+          const t = await attempt.text().catch(() => "");
+          throw new Error(`llm-judge: ${attempt.status} ${t.slice(0, 500)}`);
+        }
+        res = attempt;
+        li = laneKeys.length; // break outer
+        break;
+      } catch (e) {
+        if (!isRateLimited(e)) throw e;
+        const hasModelNext = mi + 1 < targets.length;
+        const hasLaneNext = !hasModelNext && li + 1 < laneKeys.length;
+        if (!hasModelNext && !hasLaneNext) throw e;
+        if (hasModelNext) {
+          console.log(`llm-judge rate-limited on ${lane.label} (${target.model}), switching to fallback model ${targets[mi + 1].model} on same key`);
+        } else {
+          console.log(`llm-judge rate-limited on ${lane.label}, failing over to bulk lane`);
+        }
+      }
     }
-  } catch (e) {
-    if (!plan.fallback || !isRateLimited(e)) throw e;
-    console.log(`llm-judge rate-limited on fast lane, failing over to bulk lane`);
-    const retry = await callJudge(plan.fallback);
-    if (!retry.ok) {
-      const t = await retry.text().catch(() => "");
-      throw new Error(`llm-judge: ${retry.status} ${t.slice(0, 500)}`);
-    }
-    res = retry;
   }
+  if (!res) throw new Error("llm-judge: no response");
   const data = await res.json().catch(() => {
     throw new Error("llm-judge: non-JSON 2xx response");
   }) as any;
