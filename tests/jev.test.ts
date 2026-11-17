@@ -173,3 +173,82 @@ describe("jevEndpointFromEnv (JSON JEV_MODEL)", () => {
     expect(body.model).toBe("jev-pin-test")
   })
 })
+
+describe("jev model fallback (#120, same key first)", () => {
+  test("resolveJevTarget exposes fallback model + url", () => {
+    expect(
+      resolveJevTarget('{"cli":"p/beam-free","apiBase":"https://a.invalid","fallback_cli":"p/muse-spark","fallback_apiBase":"https://b.invalid"}'),
+    ).toEqual({
+      url: "https://a.invalid",
+      model: "beam-free",
+      fallbackUrl: "https://b.invalid",
+      fallbackModel: "muse-spark",
+    })
+  })
+  test("no fallback fields = no fallback keys (old behavior)", () => {
+    expect(resolveJevTarget('{"cli":"p/beam-free","apiBase":"https://a.invalid"}')).toEqual({
+      url: "https://a.invalid",
+      model: "beam-free",
+    })
+  })
+  test("jevEndpointFromEnv carries fallback model", () => {
+    const ep = jevEndpointFromEnv({
+      JEV_MODEL: '{"cli":"jev-1.13-free","apiBase":"https://a.invalid","fallback_cli":"jev-2","fallback_apiBase":"https://b.invalid"}',
+      OPENCODE_API_KEY: "k",
+    } as any)
+    expect(ep?.fallbackModel).toBe("jev-2")
+    expect(ep?.fallbackUrl).toBe("https://b.invalid")
+  })
+  test("primary 429 -> fallback model on SAME key (no lane switch)", async () => {
+    const seen: Array<{ model: string; key: string }> = []
+    const fakeFetch = (async (_u: any, init: any) => {
+      const body = JSON.parse(init.body)
+      seen.push({ model: body.model, key: String(init.headers.Authorization) })
+      if (seen.length === 1) return { ok: false, status: 429, text: async () => "quota exceeded" }
+      return { ok: true, json: async () => ({ model: body.model, answers: {} }) }
+    }) as unknown as typeof fetch
+    const out = await jevIntake(
+      { role: "d", freshTitle: "t", freshBody: "b" },
+      [],
+      { url: "https://a.invalid/x", key: "k-fast", model: "beam-free", fallbackModel: "muse-spark" },
+      fakeFetch,
+    )
+    expect(out).not.toBeNull()
+    expect(seen.map((s) => s.model)).toEqual(["beam-free", "muse-spark"])
+    expect(seen.every((s) => s.key === "Bearer k-fast")).toBe(true)
+  })
+  test("both models 429 on fast -> bulk lane primary then fallback", async () => {
+    const seen: Array<{ model: string; key: string }> = []
+    const fakeFetch = (async (_u: any, init: any) => {
+      const body = JSON.parse(init.body)
+      seen.push({ model: body.model, key: String(init.headers.Authorization) })
+      if (seen.length <= 2) return { ok: false, status: 429, text: async () => "quota exceeded" }
+      return { ok: true, json: async () => ({ model: body.model, answers: {} }) }
+    }) as unknown as typeof fetch
+    const out = await jevIntake(
+      { role: "d", freshTitle: "t", freshBody: "b" },
+      [],
+      { url: "https://a.invalid/x", key: "k-fast", fallbackKey: "k-bulk", model: "beam-free", fallbackModel: "muse-spark" },
+      fakeFetch,
+    )
+    expect(out).not.toBeNull()
+    expect(seen).toEqual([
+      { model: "beam-free", key: "Bearer k-fast" },
+      { model: "muse-spark", key: "Bearer k-fast" },
+      { model: "beam-free", key: "Bearer k-bulk" },
+    ])
+  })
+  test("non-429 error does not trigger fallback", async () => {
+    const fakeFetch = (async () => ({
+      ok: false, status: 401, text: async () => "unauthorized",
+    })) as unknown as typeof fetch
+    await expect(
+      jevIntake(
+        { role: "d", freshTitle: "t", freshBody: "b" },
+        [],
+        { url: "https://a.invalid/x", key: "k", model: "beam-free", fallbackModel: "muse-spark" },
+        fakeFetch,
+      ),
+    ).rejects.toThrow("401")
+  })
+})

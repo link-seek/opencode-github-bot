@@ -257,8 +257,11 @@ runs:
       run: |
         export PATH="$HOME/.opencode/bin:$PATH"
         # MODEL is the unified variable (JSON {"cli","apiBase"}, legacy formats accepted).
+        # Dual-value (#120): optional fallback_cli/fallback_apiBase add a backup
+        # model on the SAME key. No fallback fields = single model (old behavior).
         # CLI takes the extracted id verbatim; see scripts/model-cli.py.
         CLI_MODEL="$(python3 "${{ steps.pkgsrc.outputs.dir }}/scripts/model-cli.py" "$MODEL")"
+        CLI_FALLBACK="$(python3 "${{ steps.pkgsrc.outputs.dir }}/scripts/model-cli.py" "$MODEL" --fallback 2>/dev/null || true)"
         # Task routing (分流): long agent runs go to the bulk lane (strict
         # isolation protects the fast lane's guaranteed capacity); without a
         # bulk key they use fast as before.
@@ -273,10 +276,21 @@ runs:
         # process.exit(), skipping beforeExit handlers).
         TASK_STARTED_AT="$(date +%s)"
         TASK_EXIT=0
-        if [ -n "${REVIEW_PROMPT}" ]; then
-          opencode run --agent github-bot --model "${CLI_MODEL}" "Mode: ${MODE}. Repository: ${REPOSITORY}. PR number: ${PR_NUMBER}. Issue number: ${ISSUE_NUMBER}. Read .opencode/pr-context.md for full context. Review prompt: ${REVIEW_PROMPT}" || TASK_EXIT=$?
-        else
-          opencode run --agent github-bot --model "${CLI_MODEL}" "Mode: ${MODE}. Repository: ${REPOSITORY}. PR number: ${PR_NUMBER}. Issue number: ${ISSUE_NUMBER}. If mode is review, read .opencode/pr-context.md and use the pr-review skill. If mode is fix-issue, read .opencode/issue-context.md and use the issue-fix skill. If mode is split-plan, read .opencode/split-context.md and use the pm-split skill. Write pm-split-plan.json in the current directory. Do NOT comment or create issues." || TASK_EXIT=$?
+        run_agent() {
+          if [ -n "${REVIEW_PROMPT}" ]; then
+            opencode run --agent github-bot --model "$1" "Mode: ${MODE}. Repository: ${REPOSITORY}. PR number: ${PR_NUMBER}. Issue number: ${ISSUE_NUMBER}. Read .opencode/pr-context.md for full context. Review prompt: ${REVIEW_PROMPT}" 2>&1 | tee /tmp/opencode-run.log
+          else
+            opencode run --agent github-bot --model "$1" "Mode: ${MODE}. Repository: ${REPOSITORY}. PR number: ${PR_NUMBER}. Issue number: ${ISSUE_NUMBER}. If mode is review, read .opencode/pr-context.md and use the pr-review skill. If mode is fix-issue, read .opencode/issue-context.md and use the issue-fix skill. If mode is split-plan, read .opencode/split-context.md and use the pm-split skill. Write pm-split-plan.json in the current directory. Do NOT comment or create issues." 2>&1 | tee /tmp/opencode-run.log
+          fi
+          return "${PIPESTATUS[0]}"
+        }
+        run_agent "${CLI_MODEL}" || TASK_EXIT=$?
+        # Lane-internal model fallback: primary 429/quota -> retry the backup
+        # model on the SAME key. No lane switch for long tasks (bulk isolation).
+        if [ "$TASK_EXIT" -ne 0 ] && [ -n "$CLI_FALLBACK" ] && grep -qiE '429|rate.?limit|quota (exceeded|exhausted)|too many requests' /tmp/opencode-run.log 2>/dev/null; then
+          echo "opencode primary model ${CLI_MODEL} rate-limited, switching to fallback model ${CLI_FALLBACK} on same key"
+          TASK_EXIT=0
+          run_agent "${CLI_FALLBACK}" || TASK_EXIT=$?
         fi
         export TASK_STARTED_AT TASK_EXIT_CODE="$TASK_EXIT"
         if ! command -v bun >/dev/null 2>&1; then curl -fsSL "${BUN_INSTALL_URL:-https://bun.sh/install}" | bash; export PATH="$HOME/.bun/bin:$PATH"; fi

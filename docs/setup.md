@@ -18,7 +18,7 @@ npx opencode-github-bot init
 | --- | --- | --- |
 | secret | `AGENT_GITHUB_TOKEN` | 有 `contents:write, pull-requests:write, issues:write` 的 PAT |
 | secret | `OPENCODE_API_KEY` | 模型 key（fast lane） |
-| var | `OPENCODE_MODEL` | 模型 id，如 `opencode-go/beam-free` |
+| var | `OPENCODE_MODEL` | 模型变量，JSON 如 `{"cli":"opencode-go/beam-free","apiBase":"..."}`；可选加 `fallback_cli` / `fallback_apiBase` 做同 key 备用模型（无备字段=单模型，老形状照用） |
 
 可选：`OPENCODE_API_KEY_BULK`（长任务专用 key，有就配）。
 
