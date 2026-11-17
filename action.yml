@@ -317,6 +317,8 @@ runs:
         FIRST="$CLI_MODEL"; SECOND="$CLI_FALLBACK"
         if [ -n "$CLI_FALLBACK" ] && [ -n "$API_BASE" ] && [ -n "$API_ID" ] && [ -n "$AGENT_KEY" ]; then
           PCODE="$(probe_code "$API_BASE" "$API_ID")"
+          PROBE_MSG=$(head -c 200 "$PROBE_BODY" 2>/dev/null | tr '\n' ' ')
+          echo "probe: http $PCODE body: $PROBE_MSG"
           if [ "$PCODE" = "429" ] || grep -qiE 'quota (exceeded|exhausted)|rate.?limit|too many requests' "$PROBE_BODY" 2>/dev/null; then
             echo "probe: primary ${CLI_MODEL} limited (http $PCODE), starting on fallback ${CLI_FALLBACK}"
             FIRST="$CLI_FALLBACK"; SECOND="$CLI_MODEL"
