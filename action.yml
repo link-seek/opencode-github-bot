@@ -294,10 +294,17 @@ runs:
         ' "$MODEL")"
         read -r API_BASE API_ID FB_BASE FB_ID <<<"$MODEL_PARTS"
         probe_code() { # $1=apiBase $2=apiId -> prints http code, body in $PROBE_BODY
+          # Shape mirrors scripts/llm-judge.ts callJudge (known-good): go
+          # subscription endpoints require x-opencode-session, hence the 400
+          # seen without it. max_tokens:1 caps quota cost of the probe.
           PROBE_BODY="$(mktemp)"
+          PROBE_HEADERS=(-H "Authorization: Bearer $AGENT_KEY" -H "Content-Type: application/json" -H "User-Agent: opencode-github-bot/probe")
+          case "$1" in
+            */inference/go/*) PROBE_HEADERS+=(-H "x-opencode-session: probe-${GITHUB_RUN_ID:-local}-$TASK_STARTED_AT") ;;
+          esac
           curl -s -o "$PROBE_BODY" -w "%{http_code}" -m 20 -X POST "$1/chat/completions" \
-            -H "Authorization: Bearer $AGENT_KEY" -H "Content-Type: application/json" \
-            -d "{\"model\":\"$2\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}],\"max_tokens\":1}" 2>/dev/null || echo "000"
+            "${PROBE_HEADERS[@]}" \
+            -d "{\"model\":\"$2\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}],\"max_tokens\":1,\"temperature\":0}" 2>/dev/null || echo "000"
         }
         run_agent() {
           if [ -n "${REVIEW_PROMPT}" ]; then
