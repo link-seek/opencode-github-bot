@@ -40,11 +40,14 @@ export interface IntakeState {
   role: string
   freshTitle: string
   freshBody: string
+  fileCheck?: string
 }
 
 /** State holds role + NEW issue only; candidates travel in per-record Nouls. */
 export function buildJevState(s: IntakeState): string {
-  return [`ROLE: ${s.role}`, `NEW: ${s.freshTitle}\n${s.freshBody}`].join("\n")
+  const parts = [`ROLE: ${s.role}`, `NEW: ${s.freshTitle}\n${s.freshBody}`]
+  if (s.fileCheck) parts.push(`FILECHECK:\n${s.fileCheck}`)
+  return parts.join("\n")
 }
 
 const SAME_QUESTION = "Is the NEW issue the same underlying problem as `candidate` (same problem, not just same words)?"
