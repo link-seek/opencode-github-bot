@@ -19,7 +19,7 @@ export const OPTIONAL_VARS = ["JEV_MODEL"] as const
 // Intake triage reads this for routing; review/fix work without it.
 // Missing file is a non-blocking reminder (notes, not missing) so
 // review-only repos still report OK.
-export const RECOMMENDED_FILES = [".github/repo-role.yml"] as const
+export const RECOMMENDED_FILES = [".github/repo-role.yml", ".github/ISSUE_TEMPLATE/intake.yml"] as const
 // Labels the bot applies in intake/split flows. Missing ones make labeling
 // 403-skip (advisory, verdict still lands in the comment) — remind at init.
 export const RECOMMENDED_LABELS = [
