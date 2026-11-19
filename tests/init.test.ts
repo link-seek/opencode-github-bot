@@ -135,6 +135,8 @@ describe("runInit", () => {
     expect(without.notes.join("\n")).toContain("rejected-out-of-scope")
     fs2.mkdirSync(path2.join(root2, ".github"), { recursive: true })
     fs2.writeFileSync(path2.join(root2, ".github", "repo-role.yml"), "owns: everything\n")
+    fs2.mkdirSync(path2.join(root2, ".github", "ISSUE_TEMPLATE"), { recursive: true })
+    fs2.writeFileSync(path2.join(root2, ".github", "ISSUE_TEMPLATE", "intake.yml"), "name: Intake\n")
     const withFile = await runInit({ cwd: root2, env: env2 })
     expect(withFile.ok).toBe(true)
     expect(withFile.notes).toEqual([])
