@@ -57,6 +57,11 @@ describe("jev contract (docs-aligned)", () => {
     expect(s).toContain("ROLE")
     expect(s).toContain("NEW")
   })
+  test("fileCheck appended when present", () => {
+    const s = buildJevState({ role: "d", freshTitle: "t", freshBody: "b", fileCheck: "k8s/a.yaml EXISTS" })
+    expect(s).toContain("FILECHECK")
+    expect(s).toContain("EXISTS")
+  })
 })
 
 describe("jevIntake parsing", () => {
