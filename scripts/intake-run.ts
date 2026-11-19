@@ -62,8 +62,12 @@ export function extractAffectedFiles(title: string, body: string, max = 10): str
     if (!q || q.length > 200 || out.includes(q) || out.length >= max) return
     if (q.startsWith("/") || q.startsWith("http://") || q.startsWith("https://")) return
     if (q.includes("..") || q.includes(" ") || !q.includes("/")) return
-    if (!/\.[A-Za-z0-9]{1,10}$/.test(q)) return
     if (!/^[A-Za-z0-9_@.\-+/]+$/.test(q)) return
+    // extension or well-known extensionless basenames (Dockerfile/Makefile/...)
+    const base = q.split("/").pop() ?? ""
+    const hasExt = /\.[A-Za-z0-9]{1,10}$/.test(q)
+    const bareOk = /^(Dockerfile|Makefile|makefile|README|LICENSE|CHANGELOG|CONTRIBUTING)(\..*)?$/.test(base) || /^[A-Z][A-Za-z0-9_.-]{2,}$/.test(base)
+    if (!hasExt && !bareOk) return
     out.push(q)
   }
   // 1. fixed template field: "### 影响文件" / "### Affected files" section
@@ -76,7 +80,7 @@ export function extractAffectedFiles(title: string, body: string, max = 10): str
   }
   // 2. fallback: backticked paths anywhere, then bare paths
   for (const b of text.matchAll(/`([^`\n]{1,200})`/g)) push(b[1].split(/\s+/)[0])
-  for (const b of text.matchAll(/(?:^|[\s("'])([A-Za-z0-9_@.\-]+(?:\/[A-Za-z0-9_@.\-]+)+\.[A-Za-z0-9]{1,10})/g)) push(b[1])
+  for (const b of text.matchAll(/(?:^|[\s("'])([A-Za-z0-9_@.\-]+(?:\/[A-Za-z0-9_@.\-]+)+)/g)) push(b[1])
   return out.slice(0, max)
 }
 
