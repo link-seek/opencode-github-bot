@@ -5,6 +5,8 @@
  * Missing provider/key -> skip that stage (unknown), never block.
  */
 import { keywordRecallTopK, semanticRecallTopK, resolveRecallMode, type IssueDoc } from "./recall"
+import { existsSync, statSync } from "node:fs"
+import { join, relative, isAbsolute } from "node:path"
 import { cfConfigFromEnv, cfEmbed, cfMintChild, resolveAccountId } from "./cf-recall"
 import { jevEndpointFromEnv, jevIntake, type IntakeState } from "./jev"
 import { routeIntake, type RouteResult } from "./intake-route"
@@ -43,6 +45,56 @@ export function hitHardWords(title: string, body: string, words: string[]): stri
   const t = `${title}\n${body}`.toLowerCase()
   for (const w of words) if (w && t.includes(w.toLowerCase())) return w
   return null
+}
+
+/**
+ * FILECHECK (robot-owned, versioned with this file): extract repo-relative
+ * candidate paths from the template's fixed field first, fall back to a
+ * generic scan of title/body. No hardcoded prefixes: any `a/b.ext` shape
+ * qualifies; existence is verified against the checkout. Both EXISTS and
+ * MISSING are fed to Jev as input (not a hard override), capped for token.
+ */
+export function extractAffectedFiles(title: string, body: string, max = 10): string[] {
+  const text = `${title}\n${body ?? ""}`
+  const out: string[] = []
+  const push = (p: string) => {
+    const q = p.trim().replace(/^['"`\s]+|['"`\s.,;:!?()\[\]{}]+$/g, "")
+    if (!q || q.length > 200 || out.includes(q) || out.length >= max) return
+    if (q.startsWith("/") || q.startsWith("http://") || q.startsWith("https://")) return
+    if (q.includes("..") || q.includes(" ") || !q.includes("/")) return
+    if (!/\.[A-Za-z0-9]{1,10}$/.test(q)) return
+    if (!/^[A-Za-z0-9_@.\-+/]+$/.test(q)) return
+    out.push(q)
+  }
+  // 1. fixed template field: "### 影响文件" / "### Affected files" section
+  const m = text.match(/###\s*(?:影响文件|Affected files)\s*\n([\s\S]{0,2000}?)(?=\n###\s|\n<!--pm-|\s*$)/i)
+  if (m) {
+    for (const line of m[1].split("\n")) {
+      const t = line.replace(/^[-*\d.)\s]+/, "").trim()
+      if (t) push(t.split(/\s+/)[0])
+    }
+  }
+  // 2. fallback: backticked paths anywhere, then bare paths
+  for (const b of text.matchAll(/`([^`\n]{1,200})`/g)) push(b[1].split(/\s+/)[0])
+  for (const b of text.matchAll(/(?:^|[\s("'])([A-Za-z0-9_@.\-]+(?:\/[A-Za-z0-9_@.\-]+)+\.[A-Za-z0-9]{1,10})/g)) push(b[1])
+  return out.slice(0, max)
+}
+
+export function checkAffectedFiles(paths: string[], cwd = process.cwd()): string {
+  if (!paths.length) return ""
+  const lines: string[] = []
+  for (const p of paths.slice(0, 10)) {
+    let exists = false
+    try {
+      const full = join(cwd, p)
+      const rel = relative(cwd, full)
+      if (!rel.startsWith("..") && !isAbsolute(rel)) {
+        exists = existsSync(full) && statSync(full).isFile()
+      }
+    } catch { exists = false }
+    lines.push(`${p} ${exists ? "EXISTS" : "MISSING"}`)
+  }
+  return lines.join("\n")
 }
 
 export function visibleComment(decision: string, opts: { linkTo?: number; scores?: string }): string {
@@ -221,6 +273,7 @@ export async function runIntake(env: NodeJS.ProcessEnv = process.env): Promise<R
     role: roleText.split("\n").slice(0, 12).join("\n").slice(0, 1500),
     freshTitle: title,
     freshBody: body.slice(0, 3000),
+    fileCheck: checkAffectedFiles(extractAffectedFiles(title, body)),
   }
   let scores: any = null
   try {
@@ -256,7 +309,7 @@ export async function runIntake(env: NodeJS.ProcessEnv = process.env): Promise<R
     repo,
     issueNumber,
     token,
-    `${visibleComment(res.decision, { linkTo: res.linkTo, scores: scoreStr })}\n${hiddenMarker({ v: 1, decision: res.decision, labels: res.labels, scores, topK: top, recall: recallNote, model: scores?.model ?? null })}`,
+    `${visibleComment(res.decision, { linkTo: res.linkTo, scores: scoreStr })}\n${hiddenMarker({ v: 1, decision: res.decision, labels: res.labels, scores, topK: top, recall: recallNote, model: scores?.model ?? null, fileCheck: state.fileCheck || undefined })}`,
   )
   await appendRecord({
     v: 1,
@@ -271,6 +324,7 @@ export async function runIntake(env: NodeJS.ProcessEnv = process.env): Promise<R
     topK: top,
     recall: recallNote,
     model: scores?.model ?? null,
+    fileCheck: state.fileCheck || undefined,
   });
   return res
 }
